@@ -1,0 +1,249 @@
+---
+title: ' '
+output: 
+  html_notebook: 
+    toc: yes
+---
+
+$$
+\DeclareMathOperator{\N}{N}
+\DeclareMathOperator{\Gam}{Gamma}
+\DeclareMathOperator{\Wish}{Wishart}
+\DeclareMathOperator{\tr}{tr}
+$$
+
+# Section 2
+
+## Bayesian inference in a simple Gaussian model
+
+Let's start with a simple, one-dimensional Gaussian example, where
+
+$$y_i |\mu, \sigma^2 \sim \N(\mu,\sigma^2).$$
+
+We will assume that $\mu$ and $\sigma$ are unknown, and will put conjugate priors on them both, so that
+$$
+\begin{aligned}
+  \sigma^2 \sim& \mbox{Inv-Gamma}(\alpha_0, \beta_0)\\
+  \mu|\sigma^2 \sim& \mbox{Normal}\left(\mu_0, \frac{\sigma^2}{\kappa_0}\right)
+\end{aligned}
+$$
+
+or, equivalently,
+$$
+\begin{aligned}
+  y_i |\mu, \omega \sim& \mbox{N}(\mu,1/\omega)\\
+  \omega \sim& \mbox{Gamma}(\alpha_0, \beta_0)\\
+  \mu|\omega \sim& \mbox{Normal}\left(\mu_0, \frac{1}{\omega\kappa_0}\right)
+\end{aligned}
+$$
+We refer to this as a normal/inverse gamma prior on $\mu$ and $\sigma^2$ (or a normal/gamma prior on $\mu$ and $\omega$). We will now explore the posterior distributions on $\mu$ and $\omega$-- much of this will involve similar results to those obtained in the first set of exercises.
+
+----
+
+***Exercise 1** Derive the conditional posterior distributions $p(\mu, \omega|y_1,\dots, y_n)$ and show that it is in the same family as $p(\mu, \omega)$. What are the updated parameters $\alpha_n, \beta_n,\mu_n$ and $\kappa_n$?*
+
+*Solution 1*. I will parametrise the Normal distribution throughout using precisions only. The prior for $(\mu, \omega)$ is known as the $\mathrm{NormalGamma}(\mu_0,\kappa_0, \alpha_0,\beta_0)$ prior and it has functional form
+\begin{aligned}
+p(\mu,\omega) & \propto \N(\mu \mid \mu_0, \kappa_0\omega)\Gam(\omega \mid \alpha_0,\beta_0) \\
+& \propto \omega^{\alpha_0 - 1/2}\exp\left\{-\frac{\kappa_0\omega}{2}(\mu - \mu_0)^2\right\}\exp\left\{-\beta_0\omega\right\} \\
+\end{aligned}
+
+
+The posterior is 
+\begin{aligned}
+p(\mu,\omega \mid y) & \propto p(\mu,\omega)p(y\mid \mu,\omega) \\
+  & \propto \omega^{\alpha_0 + n/2 - 1/2}\exp\left\{-\frac{\kappa_0\omega}{2}(\mu - \mu_0)^2\right\}\exp\left\{-\beta_0\omega\right\}\\
+  & \quad \times \exp\left\{-\frac{\omega}{2}\sum_i(y_i - \mu)^2\right\}  \\
+  & \propto \omega^{\alpha_0 + n/2 - 1/2}\exp\left\{-\frac{\kappa_0\omega}{2}(\mu - \mu_0)^2\right\}\exp\left\{-\beta_0\omega\right\} \\
+  & \quad \times \exp\left\{-\frac{\omega}{2}\left[\sum_i(y_i - \bar{y})^2+ n(\mu - \bar{y})^2\right]\right\}  \\
+  
+ &  \propto \omega^{\alpha_0 + n/2 - 1/2}\exp\left\{-\omega\left(\beta_0 + \frac{1}{2}\sum_i(y_i - \bar{y})^2 + \frac{\kappa_0n}{2(\kappa_0 + n)}(\mu_0 - \bar{y})^2\right)\right\} \\
+ & \quad \times \exp\left\{-\frac{(n + \kappa_0)\omega}{2}\left(\mu - \left(\frac{n}{n + \kappa_0}\bar{y} + \frac{\kappa_0}{n + \kappa_0}\mu_0\right)\right)^2\right\} \\
+  &  \propto \mathrm{NormalGamma}(\mu_n, \kappa_n, \alpha_n, \beta_n).
+\end{aligned}
+where
+$$
+\mu_n = \frac{n}{n + \kappa_0}\bar{y} + \frac{\kappa_0}{n + \kappa_0}\mu_0, \quad \kappa_n = n + \kappa_0, \\ 
+\alpha_n  = \alpha_0 + n/2, \quad \text{and} \quad\beta_n = \beta_0 + \frac{1}{2}\sum_i(y_i - \bar{y})^2 + \frac{\kappa_0n}{2(\kappa_0 + n)}(\mu_0 - \bar{y})^2
+$$
+
+----
+ 
+***Exercise 2**. Derive the conditional posterior distribution $p(\mu|\omega,y_1,\dots, y_n)$ and $p(\omega|y_1,\dots, y_n)$. Based on this and the previous exercise, what are reasonable interpretations for the parameters $\mu_0,\kappa_0, \alpha_0$ and $\beta_0$?*
+
+*Solution 2*. From the functional form it is evident that $(\mu \mid \omega, y) \sim \N(\mu_n, \kappa_n\omega)$ and $(\omega \mid y) \sim \Gam(\alpha_n, \beta_n)$. We interpret $\mu_0$ as first-guess for the mean, $\kappa_0$ as pseudo-counts, $\beta_0$ as a pseudo sum of squared errors, and $\alpha_0$ also as a pseudo count also (related to the degrees of freedom of the error).
+
+----
+
+***Exercise 3**.   Show that the marginal distribution over $\mu$ is a centered, scaled $t$-distribution (note we showed something very similar in the last set of exercises!), i.e. $$p(\mu) \propto \left(1+\frac{1}{\nu}\frac{(\mu-m)^2}{s^2}\right)^{-\frac{\nu+1}{2}}$$ What are the location parameter $m$, scale parameter $s$, and degree of freedom $\nu$?*
+
+*Solution 3*. We integrate
+$$
+\begin{aligned}
+p(\mu) & = \int p(\mu, \omega) d\omega \\
+& \propto  \int \omega^{\alpha_0 - 1/2}\exp\left\{-\beta_0\omega - \frac{\kappa_0\omega}{2}(\mu - \mu_0)^2\right\} d\omega \\
+& \propto \left(\beta_0 + \frac{1}{2}(\mu - \mu_0)^2\right)^{-(\alpha_0 + 1/2)}   \\
+& \propto \left(1 + \frac{1}{2\alpha_0}\frac{(\mu - \mu_0)^2}{\beta_0/\alpha_0}\right)^{-(2\alpha_0 + 1)/2}   \\
+& \propto \mathrm{tStudent}(\mu \mid \mu_0, \beta_0/\alpha_0, 2\alpha_0).
+\end{aligned}
+$$
+Thus, the marginal prior of $\mu$ is tStudent centered at $\mu_0$, with dispersion $\beta_0/\alpha_0$, and $2\alpha_0$ degrees of freedom.
+
+----
+
+***Exercise 4**. The marginal posterior $p(\mu|y_1,\dots, y_n)$ is also a centered, scaled $t$-distribution. Find the updated location, scale and degrees of freedom.*
+
+*Solution 4*. The development is identical to the previous case, allowing us to conclude
+$$
+p(\mu \mid y) = \mathrm{tStudent}(\mu \mid \mu_n, \beta_n/\alpha_n, 2\alpha_n).
+$$
+
+----
+
+***Exercise 5**. Derive the posterior predictive distribution $p(y_{n+1},\dots, y_{n+m} \mid y_1,\dots, y_{m})$.*
+
+*Solution 5*. We need to integrate over the posterior
+$$
+\begin{aligned}
+p(y_* \mid y) &= \int\!\!\!\int p(y_* \mid \mu, \omega)p(\mu, \omega \mid y)d\mu d\omega \\
+& \propto \int \omega^{\alpha_n}\exp\left\{-\beta_n\omega\right\} \int\exp\left\{-\frac{\omega}{2}\left((\mu - y_*)^2 + \kappa_n(\mu - \mu_n)^2\right)\right\} d\mu d\omega \\
+& \propto \int \omega^{\alpha_n}\exp\left\{-\omega\left(\beta_n + \frac{\kappa_n}{2(1 + \kappa_n)}(y_* - \mu_n)^2 \right)\right\} \\
+&  \quad\quad \times \left[\int\exp\left\{-\frac{\omega(1 + \kappa_n)}{2}\left((\mu - \frac{y_* + \kappa_n\mu_n}{1 + \kappa_n}\right)^2\right\} d\mu \right] d\omega \\
+& \propto \int \omega^{\alpha_n - 1/2}\exp\left\{-\omega\left(\beta_n + \frac{\kappa_n}{2(1 + \kappa_n)}(y_* - \mu_n)^2 \right)\right\}  d\omega \\
+& = \left(\beta_n + \frac{\kappa_n}{2(1 + \kappa_n)}(y_* - \mu_n)^2 \right)^{-(2\alpha_n + 1)/2} \\
+& \propto \left(1 + \frac{1}{2\alpha_n}\frac{(y_* - \mu_n)^2}{(1 + 1/\kappa_n)\beta_n/\alpha_n} \right)^{-(2\alpha_n + 1)/2} \\
+& \propto \mathrm{tStudent}\left(y_* \mid \mu_n, \left(1 + 1/\kappa_n\right)\beta_n / \alpha_n, 2\alpha_n\right). 
+\end{aligned}
+$$
+Interestingly, the new value $y_*$ has an additional dispersion of a factor $1 + 1/\kappa_n$ with respect to the posterior mean.
+
+We can extend this to more variables. The interesting thing is that they will not longer be independent! They will still be uncorrelated, but they will be jointly distributed as a multivariate tStudent.
+$$
+\begin{aligned}
+p(y_{*,1},..., y_{*,m} \mid y) & \propto \left(1 + \frac{1}{2\alpha_n}\frac{1}{(1 + 1/\kappa_n)\beta_n/\alpha_n}\sum_{i=1}^m(y_{*,i} - \mu_n)^2 \right)^{-(2\alpha_n + m)/2} \\
+& \propto \mathrm{tStudent}\left(y_{*,1},..., y_{*,m} \mid \mu_n\underline{1}_m, \left(1 + 1/\kappa_n\right)(\beta_n / \alpha_n) I_m, 2\alpha_n\right)
+\end{aligned}
+$$
+where $I_m$ is the identity matrix of size $m$ and $\underline{1}_m$ is the vector of ones of size $m$.
+
+----
+
+***Exercise 6**. Derive the marginal distribution over $y_1,\dots, y_n$.*
+
+*Solution 6*. This is completely analogous to the previous but we are using the prior instead of the posterior. This is also known as prior predtictive. Since the prior and posterior have the same functional form we see that
+$$
+\begin{aligned}
+p(y_1,...,y_n) &= \int\!\!\!\int p(y_1,...,y_n \mid \mu, \omega)p(\mu, \omega)d\mu d\omega \\
+& \propto \mathrm{tStudent}\left(y_1,...,y_n \mid \mu_0\underline{1}_n, \left(1 + 1/\kappa_0\right)(\beta_0 / \alpha_0) I_n, 2\alpha_0\right)
+\end{aligned}
+$$
+
+----
+
+
+
+## Bayesian inference in a multivariate Gaussian model
+
+Let's now assume that each $y_i$ is a $d$-dimensional vector, such that
+
+$$y_i \sim \mbox{N}(\mu, \Sigma)$$
+for $d$-dimensional mean vector $\mu$ and $d\times d$ covariance matrix $\Sigma$.
+
+We will put an *inverse Wishart* prior on $\Sigma$. The inverse Wishart distribution is a distribution over positive-definite matrices parametrized by $\nu_0>d-1$ degrees of freedom and  positive definite matrix $\Lambda_0^{-1}$, with pdf
+
+$$p(\Sigma\mid \nu_0, \Sigma_0^{-1}) = \frac{|\Sigma_0|^{\nu_0/2}}{2^{d\nu_0/2}\Gamma_d(\nu_0/2)}|\Sigma|^{-\frac{\nu_0+d+1}{2}}e^{-\frac{1}{2}\mbox{tr}(\Sigma_0\Sigma^{-1})} \propto |\Sigma|^{-\frac{\nu_0+d+1}{2}}e^{-\frac{1}{2}\tr(\Sigma_0\Sigma^{-1})}.$$
+where $\Gamma_d(x) = \pi^{d(d-1)/4}\prod_{i=1}^d\Gamma\left(x-\frac{j-1}{2}\right)$.
+
+We can also work with the precision matrix $\Lambda = \Sigma^{-1}$ instead; $\Lambda$ follows a *Wishart distribution* id
+$$
+p(\Lambda \mid \nu_0, \Lambda_0) = \frac{|\Lambda_0|^{-\nu_0/2}}{2^{d\nu_0/2}\Gamma_d(\frac{}{}\nu_0/2)}\Lambda^{\frac{\nu_0 - d - 1}{2}} e^{-\frac{1}{2}\Lambda_0^{-1}\Lambda} \propto \Lambda^{\frac{\nu_0 - d - 1}{2}} e^{-\frac{1}{2}\tr(\Lambda_0^{-1}\Lambda)}
+$$
+It is worth noticing that $E[\Lambda] = \nu_0\Lambda_0$. We can choose reasonable prior by thinking of $\Omega_0 = \Lambda_0^{-1}$ as a prior sum of squared errors and $\nu_0$ as the degrees of freedom. So that $E[\Lambda] = 1 / \text{mse}_0$.
+
+***Exercise 7**. Show that in the univariate case, the inverse Wishart distribution reduces to the inverse gamma distribution.*
+
+*Solution 7*. I'll show the Wishart reduces to Gamma. If $d=1$ and $\lambda \sim \Wish(\nu_0, \lambda_0)$ then by definition (the trace of a scalar is the scalar itself)
+$$
+\Wish(\lambda \mid \nu_0, \lambda_0)\propto \lambda^{\nu_0/2 - 1}e^{-\frac{1}{2}\lambda / \lambda_0} = \Gam(\lambda \mid \nu_0/2, \lambda_0^{-1}).
+$$
+So the rate of the Gamma is given by $1 / \lambda_0$ (alternatively, $\lambda_0$ is the scale), and $\nu_0$ is the shape.
+
+----
+
+
+***Exercise 8**.  Let $\Sigma \sim \mbox{Inv-Wishart}(\nu_0, \Omega_0^{-1})$ and $\mu|\Sigma \sim \mbox{N}(\mu_0, \Sigma/\kappa_0)$, so that
+  $$p(\mu,\Sigma) \propto |\Sigma|^{-\frac{\nu_0+d+2}{2}}e^{-\frac{1}{2}\mbox{tr}(\Omega_0\Sigma^{-1}) - \frac{\kappa_0}{2}(\mu-\mu_0)^T\Sigma^{-1}(\mu-\mu_0)}$$ 
+  and let $$y_i \sim \mbox{N}(\mu, \Sigma)$$. Show that $p(\mu, \Sigma|y_1,\dots,y_n)$ is also normal-inverse Wishart distributed, and give the form of the updated parameters $\mu_n, \kappa_n, \nu_n$ and $\Lambda_n$.*
+
+*Solution 8*. Working with precisions instead, we'll say $(\mu, \Lambda) \sim \mathrm{NormalWishart}(\mu_0, \kappa_0, \nu_0, \Lambda_0)$ if
+$$
+p(\mu, \Lambda) \propto |\Lambda|^{-\frac{\nu_0 - d }{2}} \exp\left\{-\frac{1}{2}\left\lVert\Lambda^{1/2}(\mu-\mu_0)\right\rVert^2\right\} \exp\left\{-\frac{1}{2}\tr(\Lambda_0^{-1}\Lambda)\right\}
+$$
+It will look extremely nasty but most of the proof is analogous to the univariate case. Define $\kappa_n = \kappa_0 + n$ and $\mu_n = (n\bar{y} + \kappa_0)/(n + \kappa_0)$ as before. Then
+$$
+\begin{aligned}
+p(\mu,\omega \mid y) & \propto p(\mu,\omega)p(y\mid \mu,\omega) \\
+  & \propto  |\Lambda|^{\frac{\nu_0 + n - d }{2}} \exp\left\{-\frac{\kappa_0}{2}\left\lVert\Lambda^{1/2}(\mu-\mu_0)\right\rVert^2\right\}\exp\left\{-\frac{1}{2}\tr(\Lambda_0^{-1}\Lambda)\right\} \\
+  & \quad \times \exp\left\{-\frac{1}{2}\sum_i\left\lVert\Lambda^{1/2}(y_i -\mu)\right\rVert^2\right\} \\
+  & \propto  |\Lambda|^{\frac{\nu_0 + n - d }{2}}\exp\left\{-\frac{\kappa_0}{2}\left\lVert\Lambda^{1/2}(\mu-\mu_0)\right\rVert^2\right\}\exp\left\{-\frac{1}{2}\tr(\Lambda_0^{-1}\Lambda)\right\}\\
+  & \quad \times \exp\left\{-\frac{1}{2}\left[\sum_i\left\lVert\Lambda^{1/2}(y_i -\bar{y})\right\rVert^2 + n\left\lVert\Lambda^{1/2}(\mu - \bar{y})\right\rVert^2\right]\right\}  \\
+ &  \propto  |\Lambda|^{\frac{\nu_0 + n - d }{2}}\exp\left\{-\frac{1}{2}\sum_i\left\lVert\Lambda^{1/2}(y_i - \bar{y})\right\rVert^2 - \frac{n\kappa_0}{2\kappa_n}\left\lVert\Lambda^{1/2}(\bar{y} -\mu_0)\right\rVert^2\right\} \\
+ & \quad \times \exp\left\{-\frac{1}{2}\tr(\Lambda_0^{-1}\Lambda)\right\}\exp\left\{-\frac{\kappa_n}{2}\left\lVert\Lambda^{1/2}(\mu -\mu_n)\right\rVert^2 \right\}\\
+  &  \propto  |\Lambda|^{\frac{\nu_0 + n - d }{2}}\exp\left\{-\frac{1}{2}\tr\left(\sum_i(y_i - \bar{y})(y_i - \bar{y})^\top\Lambda\right)  - \frac{n\kappa_0}{2\kappa_n}\tr\left((\mu_0 - \bar{y})(\mu_0 - \bar{y})^\top\Lambda\right)\right\} \\
+ & \quad \times \exp\left\{-\frac{1}{2}\tr(\Lambda_0^{-1}\Lambda)\right\}\exp\left\{-\frac{\kappa_n}{2}\left\lVert\Lambda^{1/2}(\mu -\mu_n)\right\rVert^2 \right\}\\
+   &  \propto  |\Lambda|^{\frac{\nu_0 + n - d }{2}} \exp\left\{-\frac{\kappa_n}{2}\left\lVert\Lambda^{1/2}(\mu -\mu_n)\right\rVert^2 \right\}\\
+ & \quad \times \exp\left\{-\frac{1}{2}\tr\left(\left(\Lambda_0^{-1} + \sum_i(y_i - \bar{y})(y_i - \bar{y})^\top  + \frac{n\kappa_0}{\kappa_n}(\mu_0 - \bar{y})(\mu_0 - \bar{y})^\top\right)\Lambda\right)\right\} \\
+  &  \propto \mathrm{NormalWishart}(\mu_n, \kappa_n, \nu_n, \Lambda_n).
+\end{aligned}
+$$
+where $\mu_n$ and $\kappa_n$ where defined before (same as NormalGamma case) and
+$$
+\nu_n = \nu_0 + n,\quad \text{ and } \quad \Lambda_n^{-1} = \Lambda_0^{-1} + \sum_i(y_i - \bar{y})(y_i - \bar{y})^\top  + \frac{n\kappa_0}{\kappa_n}(\mu_0 - \bar{y})(\mu_0 - \bar{y})^\top
+$$
+
+---
+ 
+## A Gaussian linear model
+Lets now add in covariates, so that
+
+$$\mathbf{y}|\beta, X \sim \mbox{Normal}(X\beta, (\omega \Lambda)^{-1})$$
+
+where $\mathbf{y}$ is a vector of $n$ responses; $X$ is a $n\times d$ matrix of covariates; and $\Lambda$ is a known positive definite matrix.
+Let's assume $\beta\sim \mbox{Normal}(\mu, (\omega K)^{-1})$ and $\omega \sim \mbox{Gamma}(a,b)$, where $K$ is assumed fixed.
+
+
+***Exercise 9**. Derive the conditional posterior $p(\beta \mid \omega, y_1,...,y_n)$*
+
+*Solution 9*. We'll denote the prior parameters with underscript naught to emphasise the updating process (and analogy with the case without covariates)
+$$
+\begin{aligned}
+p(\beta \mid \omega, y) & \propto p(y \mid \beta, \omega) p(\beta \mid \omega)\\
+& \propto \exp\left\{-\frac{\omega}{2}\lVert \Lambda_0^{1/2}(y - X\beta)\rVert^2\right\}\exp\left\{-\frac{\omega}{2}\lVert K_0^{1/2}(\beta - \mu_0)\rVert^2\right\} \\
+& \propto \exp\left\{-\frac{\omega}{2}\lVert\Lambda_n^{1/2}(\beta - \mu_n)\rVert^2\right\} \\
+& \propto \N(\beta \mid \mu_n, \Lambda_n)
+\end{aligned}
+$$
+where $\Lambda_n = X'\Lambda_0 X + K_0$ and
+$$
+\mu_n = \Lambda_n^{-1}(X'\Lambda_0 X\hat{y} + K_0\mu_0) = \Lambda_n^{-1}(X'\Lambda_0y + K_0\mu_0).
+$$
+In the formula above, $\hat{y}$ is *a* solution to the least squares problem. As in the previous case, the posterior mean appears as a weighted sum of the least squares estimator and the prior mean $\mu_0$.
+
+
+
+***Exercise 10**. Derive the marginal posterior $p(\omega|y_1,\dots, y_n)$.*
+
+*Solution 10*. Direct computation
+$$
+\begin{aligned}
+p(\omega \mid y) & = \int p(\omega, \beta \mid y) d\beta \\
+  & \propto p(\omega)\int p(y \mid \omega)p(\beta \mid \omega) d\beta \\
+  & \propto p(\omega) \omega^{n/2 + 1/2}\int \exp\left\{-\frac{\omega}{2}\lVert\Lambda_n^{1/2}(\beta - \mu_n)\rVert^2\right\} d\beta \\
+  & \propto p(\omega) \omega^{n/2} \\
+  & \propto\omega^{a + n/2 - 1}
+\end{aligned}
+$$
+where $\Lambda_n = X'\Lambda_0 X + K_0$ and
+$$
+\mu_n = \Lambda_n^{-1}(X'\Lambda_0 X\hat{y} + K_0\mu_0) = \Lambda_n^{-1}(X'\Lambda_0y + K_0\mu_0).
+$$
