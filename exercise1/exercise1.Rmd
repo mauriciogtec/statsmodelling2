@@ -403,7 +403,7 @@ Let's now see the distribution of the parameters
 
 ```{r}
 describe <- function(x) {
-  data_frame(mean = mean(x), sd = sd(x), low95 = quantile(x, 0.025), up95 = quantile(x, 0.0975))
+  data_frame(mean = mean(x), sd = sd(x), low95 = quantile(x, 0.025), up95 = quantile(x, 0.975))
 } 
 params %>% 
   mutate(sd = 1 / sqrt(omega)) %>% 
@@ -515,6 +515,16 @@ set.seed(999)
 res14 <- gibbs_sampler14(nsim, X, y, prior)
 ```
 
+Let's see the distribution of the coefficients. We see some change with respect to the previous model.
+
+```{r}
+beta <- data.frame(res14$beta)
+beta %>% 
+  map(describe) %>% 
+  bind_rows() %>% 
+  add_column(variable = colnames(X), .before = 1) 
+```
+
 Let's see if the uncertainty correlates with some of the covariates
 
 ```{r}
@@ -548,5 +558,72 @@ ggplot(pltdata, aes(age, error)) +
 The evidence suggests an interaction effect between age and sex, which we shall try to resolve in exercise 15.
 
 ---
+
+[Back to Index](#TOC)
+
+
+### Exercise 15
+
+*  Compare the two fits. Does the new fit capture everything we would like? What assumptions is it making? In particular, look at the fit for just male and just female subjects. Suggest ways in which we could modify the model, and for at least one of the suggestions, write an updated Gibbs sampler and run it on your model.*
+
+*Solution 15*. I first want to rerun the regression but with an interaction term, and see what happens to the errors. Also I will treat age as a categorical instead of numerical variable (since it has only four values).
+
+```{r}
+X2 <- dental %>% 
+  mutate(age = factor(age)) %>% 
+  model.matrix(~ age + female + female*age, data = .)
+y <- dental$distance
+head(X2)
+```
+
+```{r}
+# Create prior
+d <- ncol(X2)
+prior <- list(m0 = numeric(d), K0 = Diagonal(d), a0 = 1, b0 = 10, tau = 1)
+
+# Run the sampler
+nsim <- 1000
+set.seed(999)
+res15 <- gibbs_sampler14(nsim, X2, y, prior)
+```
+
+
+```{r}
+beta <- data.frame(res15$beta)
+beta %>% 
+  map(describe) %>%  # describe was defined in question 12
+  bind_rows() %>% 
+  add_column(variable = colnames(X2), .before = 1) 
+```
+
+
+```{r}
+par(mfrow = c(2, 4))
+for (j in 1:ncol(beta)) {
+  plot(beta[ ,j], 
+       type = "l", col = "blue",
+       main = colnames(X2)[j], 
+       xlab = "", ylab = "") 
+  abline(h=0, col = "red", lt = 2)
+}
+```
+
+
+```{r}
+beta <- t(res15$beta)
+err <- y - X2 %*% beta
+
+pltdata <- data.frame(mean_err = err, age = ordered(dental$age), sex = dental$Sex)
+pltdata <- pltdata %>% 
+  gather(subject, error, -c(age, sex)) 
+ggplot(pltdata, aes(age, error)) +
+  geom_boxplot() +
+  geom_hline(aes(yintercept = 0), colour = "red", linetype = "dashed") +
+  facet_grid(. ~ sex) +
+  ylab("") +
+  ggtitle(paste("Distribution of errors of interaction model per sex and age group"))
+```
+
+With the new model we are doing a better modelling of the errors independent of sex or age, although it seems we have bigger residuals.
 
 [Back to Index](#TOC)
