@@ -1,5 +1,6 @@
 ---
-title: ' '
+title: 'Statistical Modelling II'
+author: 'Mauricio Garcia Tec'
 output: 
   html_notebook: 
     toc: yes
@@ -11,6 +12,11 @@ $$
 \DeclareMathOperator{\Wish}{Wishart}
 \DeclareMathOperator{\tr}{tr}
 $$
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message = FALSE, warning = FALSE)
+```
+
 
 # Section 2
 
@@ -40,7 +46,9 @@ We refer to this as a normal/inverse gamma prior on $\mu$ and $\sigma^2$ (or a n
 
 ----
 
-***Exercise 1** Derive the conditional posterior distributions $p(\mu, \omega|y_1,\dots, y_n)$ and show that it is in the same family as $p(\mu, \omega)$. What are the updated parameters $\alpha_n, \beta_n,\mu_n$ and $\kappa_n$?*
+### Exercise 1
+
+*Derive the conditional posterior distributions $p(\mu, \omega|y_1,\dots, y_n)$ and show that it is in the same family as $p(\mu, \omega)$. What are the updated parameters $\alpha_n, \beta_n,\mu_n$ and $\kappa_n$?*
 
 *Solution 1*. I will parametrise the Normal distribution throughout using precisions only. The prior for $(\mu, \omega)$ is known as the $\mathrm{NormalGamma}(\mu_0,\kappa_0, \alpha_0,\beta_0)$ prior and it has functional form
 \begin{aligned}
@@ -67,15 +75,23 @@ $$
 \alpha_n  = \alpha_0 + n/2, \quad \text{and} \quad\beta_n = \beta_0 + \frac{1}{2}\sum_i(y_i - \bar{y})^2 + \frac{\kappa_0n}{2(\kappa_0 + n)}(\mu_0 - \bar{y})^2
 $$
 
+[Back to Index](#TOC)
+
 ----
  
-***Exercise 2**. Derive the conditional posterior distribution $p(\mu|\omega,y_1,\dots, y_n)$ and $p(\omega|y_1,\dots, y_n)$. Based on this and the previous exercise, what are reasonable interpretations for the parameters $\mu_0,\kappa_0, \alpha_0$ and $\beta_0$?*
+### Exercise 2
+
+*Derive the conditional posterior distribution $p(\mu|\omega,y_1,\dots, y_n)$ and $p(\omega|y_1,\dots, y_n)$. Based on this and the previous exercise, what are reasonable interpretations for the parameters $\mu_0,\kappa_0, \alpha_0$ and $\beta_0$?*
 
 *Solution 2*. From the functional form it is evident that $(\mu \mid \omega, y) \sim \N(\mu_n, \kappa_n\omega)$ and $(\omega \mid y) \sim \Gam(\alpha_n, \beta_n)$. We interpret $\mu_0$ as first-guess for the mean, $\kappa_0$ as pseudo-counts, $\beta_0$ as a pseudo sum of squared errors, and $\alpha_0$ also as a pseudo count also (related to the degrees of freedom of the error).
 
+[Back to Index](#TOC)
+
 ----
 
-***Exercise 3**.   Show that the marginal distribution over $\mu$ is a centered, scaled $t$-distribution (note we showed something very similar in the last set of exercises!), i.e. $$p(\mu) \propto \left(1+\frac{1}{\nu}\frac{(\mu-m)^2}{s^2}\right)^{-\frac{\nu+1}{2}}$$ What are the location parameter $m$, scale parameter $s$, and degree of freedom $\nu$?*
+### Exercise 3
+
+*Show that the marginal distribution over $\mu$ is a centered, scaled $t$-distribution (note we showed something very similar in the last set of exercises!), i.e. $$p(\mu) \propto \left(1+\frac{1}{\nu}\frac{(\mu-m)^2}{s^2}\right)^{-\frac{\nu+1}{2}}$$ What are the location parameter $m$, scale parameter $s$, and degree of freedom $\nu$?*
 
 *Solution 3*. We integrate
 $$
@@ -83,24 +99,32 @@ $$
 p(\mu) & = \int p(\mu, \omega) d\omega \\
 & \propto  \int \omega^{\alpha_0 - 1/2}\exp\left\{-\beta_0\omega - \frac{\kappa_0\omega}{2}(\mu - \mu_0)^2\right\} d\omega \\
 & \propto \left(\beta_0 + \frac{1}{2}(\mu - \mu_0)^2\right)^{-(\alpha_0 + 1/2)}   \\
-& \propto \left(1 + \frac{1}{2\alpha_0}\frac{(\mu - \mu_0)^2}{\beta_0/\alpha_0}\right)^{-(2\alpha_0 + 1)/2}   \\
-& \propto \mathrm{tStudent}(\mu \mid \mu_0, \beta_0/\alpha_0, 2\alpha_0).
+& \propto \left(1 + \frac{1}{2\alpha_0}\frac{ \kappa_0(\mu - \mu_0)^2}{\beta_0/\alpha_0}\right)^{-(2\alpha_0 + 1)/2}   \\
+& \propto \mathrm{tStudent}(\mu \mid \mu_0, \kappa_0\beta_0/\alpha_0, 2\alpha_0).
 \end{aligned}
 $$
-Thus, the marginal prior of $\mu$ is tStudent centered at $\mu_0$, with dispersion $\beta_0/\alpha_0$, and $2\alpha_0$ degrees of freedom.
+Thus, the marginal prior of $\mu$ is tStudent centered at $\mu_0$, with dispersion $\beta_n/(\kappa_0\alpha_n)$, and $2\alpha_0$ degrees of freedom.
+
+[Back to Index](#TOC)
 
 ----
 
-***Exercise 4**. The marginal posterior $p(\mu|y_1,\dots, y_n)$ is also a centered, scaled $t$-distribution. Find the updated location, scale and degrees of freedom.*
+### Exercise 4
+
+*The marginal posterior $p(\mu|y_1,\dots, y_n)$ is also a centered, scaled $t$-distribution. Find the updated location, scale and degrees of freedom.*
 
 *Solution 4*. The development is identical to the previous case, allowing us to conclude
 $$
-p(\mu \mid y) = \mathrm{tStudent}(\mu \mid \mu_n, \beta_n/\alpha_n, 2\alpha_n).
+p(\mu \mid y) = \mathrm{tStudent}(\mu \mid \mu_n,\beta_n/(\kappa_0\alpha_n), 2\alpha_n).
 $$
+
+[Back to Index](#TOC)
 
 ----
 
-***Exercise 5**. Derive the posterior predictive distribution $p(y_{n+1},\dots, y_{n+m} \mid y_1,\dots, y_{m})$.*
+### Exercise 5
+
+*Derive the posterior predictive distribution $p(y_{n+1},\dots, y_{n+m} \mid y_1,\dots, y_{m})$.*
 
 *Solution 5*. We need to integrate over the posterior
 $$
@@ -126,9 +150,13 @@ p(y_{*,1},..., y_{*,m} \mid y) & \propto \left(1 + \frac{1}{2\alpha_n}\frac{1}{(
 $$
 where $I_m$ is the identity matrix of size $m$ and $\underline{1}_m$ is the vector of ones of size $m$.
 
+[Back to Index](#TOC)
+
 ----
 
-***Exercise 6**. Derive the marginal distribution over $y_1,\dots, y_n$.*
+### Exercise 6
+
+*Derive the marginal distribution over $y_1,\dots, y_n$.*
 
 *Solution 6*. This is completely analogous to the previous but we are using the prior instead of the posterior. This is also known as prior predtictive. Since the prior and posterior have the same functional form we see that
 $$
@@ -137,6 +165,8 @@ p(y_1,...,y_n) &= \int\!\!\!\int p(y_1,...,y_n \mid \mu, \omega)p(\mu, \omega)d\
 & \propto \mathrm{tStudent}\left(y_1,...,y_n \mid \mu_0\underline{1}_n, \left(1 + 1/\kappa_0\right)(\beta_0 / \alpha_0) I_n, 2\alpha_0\right)
 \end{aligned}
 $$
+
+[Back to Index](#TOC)
 
 ----
 
@@ -160,7 +190,9 @@ p(\Lambda \mid \nu_0, \Lambda_0) = \frac{|\Lambda_0|^{-\nu_0/2}}{2^{d\nu_0/2}\Ga
 $$
 It is worth noticing that $E[\Lambda] = \nu_0\Lambda_0$. We can choose reasonable prior by thinking of $\Omega_0 = \Lambda_0^{-1}$ as a prior sum of squared errors and $\nu_0$ as the degrees of freedom. So that $E[\Lambda] = 1 / \text{mse}_0$.
 
-***Exercise 7**. Show that in the univariate case, the inverse Wishart distribution reduces to the inverse gamma distribution.*
+### Exercise 7
+
+*Show that in the univariate case, the inverse Wishart distribution reduces to the inverse gamma distribution.*
 
 *Solution 7*. I'll show the Wishart reduces to Gamma. If $d=1$ and $\lambda \sim \Wish(\nu_0, \lambda_0)$ then by definition (the trace of a scalar is the scalar itself)
 $$
@@ -168,10 +200,14 @@ $$
 $$
 So the rate of the Gamma is given by $1 / \lambda_0$ (alternatively, $\lambda_0$ is the scale), and $\nu_0$ is the shape.
 
+[Back to Index](#TOC)
+
 ----
 
 
-***Exercise 8**.  Let $\Sigma \sim \mbox{Inv-Wishart}(\nu_0, \Omega_0^{-1})$ and $\mu|\Sigma \sim \mbox{N}(\mu_0, \Sigma/\kappa_0)$, so that
+### Exercise 8
+
+*Let $\Sigma \sim \mbox{Inv-Wishart}(\nu_0, \Omega_0^{-1})$ and $\mu|\Sigma \sim \mbox{N}(\mu_0, \Sigma/\kappa_0)$, so that
   $$p(\mu,\Sigma) \propto |\Sigma|^{-\frac{\nu_0+d+2}{2}}e^{-\frac{1}{2}\mbox{tr}(\Omega_0\Sigma^{-1}) - \frac{\kappa_0}{2}(\mu-\mu_0)^T\Sigma^{-1}(\mu-\mu_0)}$$ 
   and let $$y_i \sim \mbox{N}(\mu, \Sigma)$$. Show that $p(\mu, \Sigma|y_1,\dots,y_n)$ is also normal-inverse Wishart distributed, and give the form of the updated parameters $\mu_n, \kappa_n, \nu_n$ and $\Lambda_n$.*
 
@@ -201,6 +237,8 @@ $$
 \nu_n = \nu_0 + n,\quad \text{ and } \quad \Lambda_n^{-1} = \Lambda_0^{-1} + \sum_i(y_i - \bar{y})(y_i - \bar{y})^\top  + \frac{n\kappa_0}{\kappa_n}(\mu_0 - \bar{y})(\mu_0 - \bar{y})^\top
 $$
 
+[Back to Index](#TOC)
+
 ---
  
 ## A Gaussian linear model
@@ -211,37 +249,303 @@ $$\mathbf{y}|\beta, X \sim \mbox{Normal}(X\beta, (\omega \Lambda)^{-1})$$
 where $\mathbf{y}$ is a vector of $n$ responses; $X$ is a $n\times d$ matrix of covariates; and $\Lambda$ is a known positive definite matrix.
 Let's assume $\beta\sim \mbox{Normal}(\mu, (\omega K)^{-1})$ and $\omega \sim \mbox{Gamma}(a,b)$, where $K$ is assumed fixed.
 
+**NOTE: For this exercise I will only consider the case when $\Lambda$ is the identity matrix. The justification is that
+by defining $\tilde{X} = \Lambda^{1/2}X$ and $\tilde{y} = \Lambda^{1/2}y$ then our model becomes $(\tilde{y} \mid \tilde{X}, \beta) \sim \N(\tilde{X}\beta, \omega I_n)$. We'll drop the tilde's from the notation. We'll also denote the prior parameters with underscript naught to emphasise the updating process (and analogy with the case without covariates)**
 
-***Exercise 9**. Derive the conditional posterior $p(\beta \mid \omega, y_1,...,y_n)$*
+### Exercise 9
 
-*Solution 9*. We'll denote the prior parameters with underscript naught to emphasise the updating process (and analogy with the case without covariates)
+*Derive the conditional posterior $p(\beta \mid \omega, y_1,...,y_n)$*
+
+*Solution 9*. Direct computation
 $$
 \begin{aligned}
 p(\beta \mid \omega, y) & \propto p(y \mid \beta, \omega) p(\beta \mid \omega)\\
-& \propto \exp\left\{-\frac{\omega}{2}\lVert \Lambda_0^{1/2}(y - X\beta)\rVert^2\right\}\exp\left\{-\frac{\omega}{2}\lVert K_0^{1/2}(\beta - \mu_0)\rVert^2\right\} \\
-& \propto \exp\left\{-\frac{\omega}{2}\lVert\Lambda_n^{1/2}(\beta - \mu_n)\rVert^2\right\} \\
-& \propto \N(\beta \mid \mu_n, \Lambda_n)
+& \propto \exp\left\{-\frac{\omega}{2}\lVert y - X\beta \rVert^2\right\}\exp\left\{-\frac{\omega}{2}\lVert K_0^{1/2}(\beta - \mu_0)\rVert^2\right\} \\
+& \propto \exp\left\{-\frac{\omega}{2}\lVert K_n^{1/2}(\beta - \mu_n)\rVert^2\right\} \\
+& \propto \N(\beta \mid \mu_n, \omega K_n)
 \end{aligned}
 $$
-where $\Lambda_n = X'\Lambda_0 X + K_0$ and
+where $K_n = X'X + K_0$ and
 $$
-\mu_n = \Lambda_n^{-1}(X'\Lambda_0 X\hat{y} + K_0\mu_0) = \Lambda_n^{-1}(X'\Lambda_0y + K_0\mu_0).
+\mu_n = K_n^{-1}\left((X'X)\hat{y} + K_0\mu_0\right) = K_n^{-1}(X'y + K_0\mu_0).
 $$
-In the formula above, $\hat{y}$ is *a* solution to the least squares problem. As in the previous case, the posterior mean appears as a weighted sum of the least squares estimator and the prior mean $\mu_0$.
+In the formula above, $\hat{y}$ is the solution to the least squares problem (which satisfies $(X'X)\hat{y} = X'y)$. As in the previous case, the posterior mean appears as a weighted sum of the least squares estimator and the prior mean $\mu_0$. Another intuition driving this is that we recover the case without covariates with $X$ as the vector of ones. So $X'X = n$; this in part explains why the formulas should have $n$ replace with $X'X$.
 
+----
 
+[Back to Index](#TOC)
 
-***Exercise 10**. Derive the marginal posterior $p(\omega|y_1,\dots, y_n)$.*
+### Exercise 10
+
+*Derive the marginal posterior $p(\omega \mid y_1,\dots, y_n)$.*
 
 *Solution 10*. Direct computation
 $$
 \begin{aligned}
 p(\omega \mid y) & = \int p(\omega, \beta \mid y) d\beta \\
-  & \propto p(\omega)\int p(y \mid \omega)p(\beta \mid \omega) d\beta \\
-  & \propto  \omega^{n/2 + a_0 +1/2} \exp\left\{-\omega \left(b_0 +   \frac{1}{2}\lVert\Lambda_0^{1/2}(y - X\beta)\rVert^2 + \frac{n}{2}\lVert(\Lambda_n^{-1/2}K_0^{1/2}(\mu_0 - \hat{y}))\rVert^2\right)\right\} \\ 
-  & \quad\quad \times \int \exp\left\{-\frac{\omega}{2}\lVert\Lambda_n^{1/2}(\beta - \mu_n)\rVert^2\right\} d\beta \\
-& \propto  \omega^{n/2 + a_0} \exp\left\{-\omega \left(b_0 +   \frac{1}{2}\lVert\Lambda_0^{1/2}(y - X\beta)\rVert^2 + \frac{n}{2}\lVert(\Lambda_n^{-1/2}K_0^{1/2}(\mu_0 - \hat{y}))\rVert^2\right)\right\}\\
+  & \propto \int p(y \mid \beta, \omega)p(\beta \mid \omega)p(\omega) d\beta \\
+  & \propto  \omega^{n/2 + a_0 - 1/2} \exp\left\{-\omega \left(b_0 + \frac{1}{2}\left[y'y + \mu_0K_0\mu_0 - \mu_n K_n\mu_n\right]\right)\right\} \\ 
+  & \quad\quad \times \int \exp\left\{-\frac{\omega}{2}\lVert K_n^{1/2}(\beta - \mu_n)\rVert^2\right\} d\beta \\
+& \propto  \omega^{n/2 + a_0 - 1} \exp\left\{-\omega \left(b_0 + \frac{1}{2}\left[y'y + \mu_0K_0\mu_0 - \mu_n K_n\mu_n\right]\right)\right\}\\
+& =  \omega^{n/2 + a_0 - 1} \exp\left\{-\omega \left(b_0 + \frac{1}{2}\left(\lVert y - X\mu_n\rVert^2 + \lVert K_0^{1/2}(\mu_n - \mu_0) \rVert^2 \right)\right)\right\}\\
+& =  \omega^{a_n - 1} \exp\left\{-\omega\beta_n\right\}\\
 & \propto  \Gam(a_n, b_n)
 \end{aligned}
 $$
-where $a_n = a + n/2$ and $b_n = b_0 +   \frac{1}{2}\lVert\Lambda_0^{1/2}(y - X\beta)\rVert^2 + \frac{n}{2}\lVert(\Lambda_n^{-1/2}K_0^{1/2}(\mu_0 - \hat{y}))\rVert^2$. We again can interpret $a_n$ as degrees of freedom and $b_n$ as sum of squared errors with a penalization for the prior.
+where $a_n = a + n/2$ and $b_n =b_0 + \frac{1}{2}\left(\lVert y - X\mu_n\rVert^2 + \lVert K_0^{1/2}(\mu_n - \mu_0) \rVert^2 \right)$. We again can interpret $a_n$ as degrees of freedom and $b_n$ as sum of squared errors with a penalization for the prior guess.
+
+----
+
+[Back to Index](#TOC)
+
+### Exercise 11
+
+*Derive the marginal posterior $p(\beta \mid y_1,\dots, y_n)$.*
+
+*Solution 11*. Direct computation
+$$
+\begin{aligned}
+p(\beta \mid y) & = \int p(\beta, \omega \mid y) d\omega \\
+    & \propto \int  \omega^{a_n - 1/2} \exp\left\{-\omega\beta_n\right\} \exp\left\{-\frac{\omega}{2}\lVert K_n^{1/2}(\beta - \mu_n)\rVert^2\right\}  d\omega \\
+    & = \int \omega^{a_n - 1/2}  \exp\left\{-\omega\left(\beta_n + \frac{1}{2}\lVert K_n^{1/2}(\beta - \mu_n)\rVert^2\right)\right\}  d\omega \\
+    & \propto \left(\beta_n + \frac{1}{2}\lVert K_n^{1/2}(\beta - \mu_n)\rVert^2\right)^{-\frac{2\alpha_n + 1}{2}} \\
+    & \propto \left(1 + \frac{1}{2\alpha_n}\frac{\lVert K_n^{1/2}(\beta - \mu_n)\rVert^2}{\beta_n/\alpha_n}\right)^{-\frac{2\alpha_n + 1}{2}} \\
+    & \propto \mathrm{tStudent}\left(\beta \mid \mu_n ,\; (\beta_n/\alpha_n)K_n^{-1},\; 2\alpha_n \right).
+\end{aligned}
+$$
+We arrive to a tStudent distribution with mean $\mu_n$, dispersion $(\beta_n/\alpha_n)K_n^{-1}$ and $2\alpha_n$ degrees of freedom.
+
+----
+
+[Back to Index](#TOC)
+
+### Exercise 12
+
+*Download the dataset dental.csv from Github. This dataset measures a dental distance (specifically, the distance between the center of the pituitary to the pterygomaxillary fissure) in 27 children. Add a column of ones to correspond to the intercept. Fit the above Bayesian model to the dataset, using $\Lambda=I$ and $K=I$, and picking vague priors for the hyperparameters, and plot the resulting fit. How does it compare to the frequentist LS and ridge regression results?*
+
+*Solution 12*. 
+
+```{r}
+library(tidyverse)
+library(mvtnorm)
+library(Matrix)
+```
+
+Read the data
+```{r}
+dental <- read_csv("dental.csv")[ ,-1] %>% 
+  mutate(female = as.integer(Sex == 'Female'))
+head(dental)
+```
+```{r}
+X <- dental %>% 
+  model.matrix(~ age + female, data = .)
+y <- dental$distance
+head(X)
+```
+
+```{r}
+gibbs_sampler12 <- function(nsim, X, y, prior) {
+  # metadata
+  n <- nrow(X)
+  d <- ncol(X)
+  
+  # initialise 
+  beta <- matrix(0, nsim, d)
+  omega <- numeric(nsim)
+  
+  # computed quantities
+  Kn <- crossprod(X) + prior$K0
+  Kn_inv <- solve(Kn)
+  mn <- solve(Kn, crossprod(X, y) + prior$K0 %*% prior$m0)
+  an <- prior$a0 + n/2
+  bn <- prior$b0 + 0.5*drop(crossprod(y - X %*% mn)) +
+    0.5*drop(crossprod(mn - prior$m0, prior$K0 %*% (mn - prior$m0)))
+  
+  # sampler
+  for (k in 1:nsim) {
+    omega[k] <- rgamma(1, shape = an, rate = bn)
+    beta[k, ] <- rmvnorm(1, mean = mn, sigma = as(Kn_inv / omega[k], "matrix"))
+  }
+  
+  params <- data.frame(cbind(beta, omega))
+  names(params) <- c(colnames(X), "omega")
+  params
+}
+```
+
+Now let's test it
+
+```{r}
+# Create prior
+d <- ncol(X)
+prior <- list(m0 = numeric(d), K0 = Diagonal(d), a0 = 1, b0 = 10)
+
+# Run the sampler
+nsim <- 1000
+set.seed(999)
+params <- gibbs_sampler12(nsim, X, y, prior)
+```
+
+Let's plot and print some results
+
+```{r}
+par(mfrow = c(2, 2))
+for (j in 1:4) {
+  plot(params[ ,j], 
+       type = "l", col = "blue", 
+       main = names(params)[j], 
+       xlab = "", ylab = "")  
+}
+```
+
+Let's now see the distribution of the parameters
+
+```{r}
+describe <- function(x) {
+  data_frame(mean = mean(x), sd = sd(x), low95 = quantile(x, 0.025), up95 = quantile(x, 0.0975))
+} 
+params %>% 
+  mutate(sd = 1 / sqrt(omega)) %>% 
+  map(describe) %>% 
+  bind_rows() %>% 
+  add_column(variable = c(names(params), "std.dev"), .before = 1) 
+
+```
+
+Now let's compare with the Ridge regression coefficients. As expected these coincide with our Bayesian model.
+
+```{r}
+ridge <- drop(solve(crossprod(X) + Diagonal(d) * prior$K0, crossprod(X, y)))
+ridge
+```
+
+ 
+Let's also include the OLS coefficients; naturally, they are further away from zero.
+
+```{r}
+ols <- drop(solve(crossprod(X), crossprod(X, y)))
+ols
+```
+
+---
+
+[Back to Index](#TOC)
+
+## A hierarchical Gaussian linear model
+
+The dental dataset has heavier tailed residuals than we would expect under a Gaussian model. We've seen previously that we can model a scaled $t$-distribution using a scale mixture of Gaussians; let's put that into effect here. Concretely, let
+$$\begin{aligned}
+  \mathbf{y}|\beta,\omega,\Lambda \sim& \mbox{N}(X\beta, (\omega \Lambda)^{-1})\\
+  \Lambda =& \mbox{diag}(\lambda_1,\dots, \lambda_n)\\
+  \lambda_i \stackrel{\small{iid}}{\sim} \mbox{Gamma}(\tau,\tau)\\
+  \beta|\omega \sim& \mbox{N}(\mu, (\omega K)^{-1})\\
+  \omega \sim& \mbox{Gamma}(a,b)
+\end{aligned}$$
+
+### Exercise 13
+
+*What is the conditional posterior, $p(\lambda_i|\mathbf{y},\beta, \omega)$?*
+
+*Solution 13*. Easy computation
+$$\begin{aligned}
+  p(\lambda_i \mid \beta, \omega, y) & \propto p(y_i \mid \beta, \omega, \lambda_i) p(\lambda_i) \\
+  & \propto \lambda_i^{\tau - 1/2}\exp\left\{-\tau - \frac{\omega\lambda_i}{2}(y_i - x_i'\beta)^2\right\} \\
+  & \propto \Gam\left(\lambda_i \mid \tau + 1/2, \tau + \frac{\omega}{2}(y_i - x_i'\beta)^2\right)
+\end{aligned}$$
+
+---
+
+[Back to Index](#TOC)
+
+### Exercise 14
+
+*Write a Gibbs sampler that alternates between sampling from the conditional posteriors of $\lambda_i$, $\beta$ and $\omega$, and run it for a couple of thousand samplers to fit the model to the dental dataset.*
+
+*Solution 14*
+
+```{r}
+library(tidyverse)
+library(mvtnorm)
+library(Matrix)
+library(ggplot2)
+```
+
+
+```{r}
+gibbs_sampler14 <- function(nsim, X, y, prior) {
+  # metadata
+  n <- nrow(X)
+  d <- ncol(X)
+  
+  # initialise 
+  beta <- matrix(0, nsim, d)
+  omega <- numeric(nsim)
+  lambda <- matrix(0, nsim + 1, n)
+  lambda[1, ] <- 1
+
+  # sampler
+  for (k in 1:nsim) {
+    Kn <- crossprod(X, lambda[k, ]*X) + prior$K0
+    Kn_inv <- solve(Kn)
+    mn <- solve(Kn, crossprod(X, lambda[k, ]*y) + prior$K0 %*% prior$m0)
+    err <- as.numeric(y - X %*% mn)
+    an <- prior$a0 + n/2
+    bn <- prior$b0 + 0.5*drop(crossprod(err, lambda[k, ] * err)) +
+      0.5*drop(crossprod(mn - prior$m0, prior$K0 %*% (mn - prior$m0)))
+    taun <- prior$tau + 0.5*omega[k] * err^2
+    omega[k] <- rgamma(1, shape = an, rate = bn)
+    beta[k, ] <- rmvnorm(1, mean = mn, sigma = as(Kn_inv / omega[k], "matrix"))
+    lambda[k + 1, ] <- map_dbl(taun, ~ rgamma(1, prior$tau + 0.5, .))
+  }
+  lambda <- lambda[-1, ]
+  
+  list(beta = beta, omega = omega, lambda = lambda)
+}
+```
+
+```{r}
+# Create prior
+d <- ncol(X)
+prior <- list(m0 = numeric(d), K0 = Diagonal(d), a0 = 1, b0 = 10, tau = 1)
+
+# Run the sampler
+nsim <- 1000
+set.seed(999)
+res14 <- gibbs_sampler14(nsim, X, y, prior)
+```
+
+Let's see if the uncertainty correlates with some of the covariates
+
+```{r}
+mean_lambda <- apply(res14$lambda, 2, mean)
+
+pltdata <- data.frame(mean_lambda = mean_lambda, age = ordered(dental$age), sex = dental$Sex)
+ggplot(pltdata, aes(age, mean_lambda)) +
+  geom_boxplot() +
+  facet_grid(. ~ sex) +
+  ylab("") +
+  ggtitle(paste("Distribution of", expression(lambda_i), "per sex and age group"))
+```
+
+Now let's look at the residuals
+
+```{r}
+beta <- t(res14$beta)
+err <- y - X %*% beta
+mean_err <- apply(err, 1, mean)
+
+pltdata <- data.frame(mean_err = mean_err, age = ordered(dental$age), sex = dental$Sex)
+ggplot(pltdata, aes(age, mean_err)) +
+  geom_boxplot() +
+  geom_hline(aes(yintercept = 0), colour = "red", linetype = "dashed") +
+  facet_grid(. ~ sex) +
+  ylab("") +
+  ggtitle(paste("Distribution of errors per sex and age group (all should be around zero)"))
+```
+
+The evidence suggests an interaction effect between age and sex, which we shall try to resolve in exercise 15.
+
+---
+
+[Back to Index](#TOC)
