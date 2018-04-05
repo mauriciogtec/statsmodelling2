@@ -238,12 +238,10 @@ $$
 \begin{aligned}
 p(\omega \mid y) & = \int p(\omega, \beta \mid y) d\beta \\
   & \propto p(\omega)\int p(y \mid \omega)p(\beta \mid \omega) d\beta \\
-  & \propto p(\omega) \omega^{n/2 + 1/2}\int \exp\left\{-\frac{\omega}{2}\lVert\Lambda_n^{1/2}(\beta - \mu_n)\rVert^2\right\} d\beta \\
-  & \propto p(\omega) \omega^{n/2} \\
-  & \propto\omega^{a + n/2 - 1}
+  & \propto  \omega^{n/2 + a_0 +1/2} \exp\left\{-\omega \left(b_0 +   \frac{1}{2}\lVert\Lambda_0^{1/2}(y - X\beta)\rVert^2 + \frac{n}{2}\lVert(\Lambda_n^{-1/2}K_0^{1/2}(\mu_0 - \hat{y}))\rVert^2\right)\right\} \\ 
+  & \quad\quad \times \int \exp\left\{-\frac{\omega}{2}\lVert\Lambda_n^{1/2}(\beta - \mu_n)\rVert^2\right\} d\beta \\
+& \propto  \omega^{n/2 + a_0} \exp\left\{-\omega \left(b_0 +   \frac{1}{2}\lVert\Lambda_0^{1/2}(y - X\beta)\rVert^2 + \frac{n}{2}\lVert(\Lambda_n^{-1/2}K_0^{1/2}(\mu_0 - \hat{y}))\rVert^2\right)\right\}\\
+& \propto  \Gam(a_n, b_n)
 \end{aligned}
 $$
-where $\Lambda_n = X'\Lambda_0 X + K_0$ and
-$$
-\mu_n = \Lambda_n^{-1}(X'\Lambda_0 X\hat{y} + K_0\mu_0) = \Lambda_n^{-1}(X'\Lambda_0y + K_0\mu_0).
-$$
+where $a_n = a + n/2$ and $b_n = b_0 +   \frac{1}{2}\lVert\Lambda_0^{1/2}(y - X\beta)\rVert^2 + \frac{n}{2}\lVert(\Lambda_n^{-1/2}K_0^{1/2}(\mu_0 - \hat{y}))\rVert^2$. We again can interpret $a_n$ as degrees of freedom and $b_n$ as sum of squared errors with a penalization for the prior.
