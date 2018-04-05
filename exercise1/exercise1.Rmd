@@ -518,10 +518,10 @@ res14 <- gibbs_sampler14(nsim, X, y, prior)
 Let's see if the uncertainty correlates with some of the covariates
 
 ```{r}
-mean_lambda <- apply(res14$lambda, 2, mean)
-
-pltdata <- data.frame(mean_lambda = mean_lambda, age = ordered(dental$age), sex = dental$Sex)
-ggplot(pltdata, aes(age, mean_lambda)) +
+pltdata <- data.frame(lambda = t(res14$lambda), age = ordered(dental$age), sex = dental$Sex)
+pltdata <- pltdata %>% 
+  gather(subject, lambda, -c(age, sex)) 
+ggplot(pltdata, aes(age, lambda)) +
   geom_boxplot() +
   facet_grid(. ~ sex) +
   ylab("") +
@@ -533,10 +533,11 @@ Now let's look at the residuals
 ```{r}
 beta <- t(res14$beta)
 err <- y - X %*% beta
-mean_err <- apply(err, 1, mean)
 
-pltdata <- data.frame(mean_err = mean_err, age = ordered(dental$age), sex = dental$Sex)
-ggplot(pltdata, aes(age, mean_err)) +
+pltdata <- data.frame(mean_err = err, age = ordered(dental$age), sex = dental$Sex)
+pltdata <- pltdata %>% 
+  gather(subject, error, -c(age, sex)) 
+ggplot(pltdata, aes(age, error)) +
   geom_boxplot() +
   geom_hline(aes(yintercept = 0), colour = "red", linetype = "dashed") +
   facet_grid(. ~ sex) +
