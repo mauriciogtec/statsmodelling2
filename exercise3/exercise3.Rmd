@@ -19,7 +19,7 @@ knitr::opts_chunk$set(message = FALSE, warning = FALSE)
 ```
 
 
-# Section 3> Bayesian GLMs
+# Section 3: Bayesian GLMs
 
 ## Modeling non-Gaussian observations
 
@@ -831,7 +831,7 @@ library(Matrix)
 
 ```{r}
 discipline <- read_csv("./tea_discipline_oss.csv") %>% 
-  slice(sample(nrow(.), 2500)) %>% 
+  # slice(sample(nrow(.), 2500)) %>% 
   na.omit()
 ```
 
@@ -881,9 +881,9 @@ generated quantities {
 ```
 
 ```{r}
-# ethnicities <- unique(discipline$ETHNICX)[-1] # remove white from the lsit
-# discipline$ETHNICX <- factor(discipline$ETHNICX, levels = c("White", ethnicities)) # make sure white is base group
-# discipline$SEXX <- factor(discipline$SEXX, levels = c("MALE", "FEMALE")) # male is base group
+ethnicities <- unique(discipline$ETHNICX)[-1] # remove white from the lsit
+discipline$ETHNICX <- factor(discipline$ETHNICX, levels = c("White", ethnicities)) # make sure white is base group
+discipline$SEXX <- factor(discipline$SEXX, levels = c("MALE", "FEMALE")) # male is base group
 X <- discipline %>% 
   model.matrix(~ GRADE + ETHNICX + SEXX, data = .)
 y <- discipline %>% 
