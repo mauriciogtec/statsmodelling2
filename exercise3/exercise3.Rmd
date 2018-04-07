@@ -1,0 +1,603 @@
+---
+title: 'Statistical Modelling II'
+author: 'Mauricio Garcia Tec'
+output: 
+  html_notebook: 
+    toc: yes
+---
+
+$$
+\DeclareMathOperator{\N}{N}
+\DeclareMathOperator{\Gam}{Gamma}
+\DeclareMathOperator{\Wish}{Wishart}
+\DeclareMathOperator{\tr}{tr}
+\DeclareMathOperator{\Po}{Poisson}
+$$
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message = FALSE, warning = FALSE)
+```
+
+
+# Section 3
+
+## Modeling non-Gaussian observations
+
+So far, we've assumed real-valued observations. In this setting, our likelihood model is a univariate normal, parametrized by a mean $x_i^T\beta$ and some precision that does not directly depend on the value of $x_i$. In general, $x_i^T\beta$ will take values in $\mathbb{R}$
+
+
+If we don't want to use a Gaussian likelihood, we typically won't be able to parametrize our data using a real-valued parameter. Instead, we must transform it via an appropriate link function. This is, in essence, the generalized linear model.
+
+
+
+As a first step into other types of data, let's consider binary valued observations. Here, the natural likelihood model is a Bernoulli random variable; however we cannot directly parametrize this by $x_i^T\beta$. Instead, we must transform $x_i^T\beta$ to lie between $0$ and $1$ via some function $g^{-1}:\mathbb{R}\rightarrow (0,1)$. We can then write a linear model as
+
+$$\begin{aligned}
+  y_i|p_i \sim& \mbox{Bernoulli}(p_i)\\
+  p_i =& g^{-1}(x_i^T\beta)\\
+  \beta|\theta \sim& \pi_\theta(\beta)
+\end{aligned}$$
+
+
+where $\pi_\theta(\beta)$ is our choice of prior on $\beta$. Unfortunately, there is no choice of prior here that makes the model conjugate.
+
+Let's start off with a normal prior on $\beta$. One appropriate function for $g^{-1}$ is the CDF of the normal distribution -- known as the probit function. 
+This is equivalent to assuming our data are generated according to
+
+$$\begin{aligned}
+  y_i =& \begin{cases} 1 & if z>0 \\ 0 & \mbox{otherwise}\end{cases}\\
+  z_i \sim& \mbox{N}(x_i^T\beta, \tau^2)
+\end{aligned}$$
+
+If we put a normal-inverse gamma prior on $\beta$ and $\tau$, then we have a \textit{latent} regression model on the $(x_i,z_i)$ pairs, that is idential to what we had before! Conditioned on the $z_i$, we can easily sample values for $\beta$ and $\tau$.
+
+### Exercise 1
+
+*To complete our Gibbs sampler, we must specify the conditional distribution $p(z_i|x_i,y_i,\beta, \tau)$. Write down the form of this conditional distribution, and write a Gibbs sampler to sample from the posterior distribution. Test it on the dataset \texttt{pima.csv}, which contains diabetes information for women of Pima indian heritage. The dataset is from National Institute of Diabetes and Digestive and Kidney Diseases, full information and explanation of variables is available at \texttt{http://archive.ics.uci.edu/ml/datasets/Pima+Indians+Diabetes}.*
+
+*Solution*. We are missing the conditional probability of the latent variable
+$$
+(z_i \mid x_i,y_i,\beta, \tau) \sim \begin{cases} 
+N(x_i'\beta, \tau^2) \quad \text{truncated to } [0, \infty) \quad &\text{if }\quad y_i = 1 \\
+N(x_i'\beta, \tau^2) \quad \text{truncated to } (-\infty, 0] \quad &\text{if }\quad y_i = 0
+\end{cases}
+$$
+The other conditionals are identical as in section two.
+
+```{r}
+library(tidyverse)
+library(Matrix)
+library(mvtnorm)
+library(truncnorm)
+```
+
+```{r}
+pima <- read_csv("./pima.csv")
+head(pima)
+```
+
+```{r}
+X <- pima %>% 
+  select(-class_variable) %>% 
+  mutate_each(funs(scale)) %>% 
+  add_column(`(Intercept)` = 1, .before = 1) %>% 
+  data.matrix() 
+y <- pima %>% 
+  pull(class_variable)
+```
+
+
+```{r}
+gibbs_sampler1 <- function(nsim, X, y, prior) {
+  n <- nrow(X)
+  d <- ncol(X)
+  
+  # initialise 
+  beta <- matrix(0, nsim, d)
+  omega <- numeric(nsim)
+  z <- matrix(0, nsim + 1, n)
+  
+  # constant computed quantities
+  an <- prior$a0 + n/2
+  Kn_inv <- solve(crossprod(X, X) + prior$K0)
+  lims <-  c(-Inf, 0, Inf) # nice trick to choose the truncation limits
+    
+  # sampler
+  for (k in 1:nsim) {
+    # random computed quantities
+    mn <- Kn_inv %*% (crossprod(X, z[k, ]) + prior$K0 %*% prior$m0)
+    bn <- prior$b0 + 0.5*drop(crossprod(z[k, ] - X %*% mn)) +
+      0.5*drop(crossprod(mn - prior$m0, prior$K0 %*% (mn - prior$m0)))
+      
+    # sample
+    omega[k] <- rgamma(1, shape = an, rate = bn)
+    beta[k, ] <- rmvnorm(1, mean = mn, sigma = as(Kn_inv, "matrix") / omega[k])
+    reg <- drop(X %*% beta[k, ])
+    for (i in 1:n) {
+      z[k + 1, i] <- rtruncnorm(1, lims[1 + y[i]], lims[2 + y[i]], reg[i], 1 / sqrt(omega[k]))
+    }
+  }
+  z <- z[-1, ]
+    
+  list(beta = beta, tau = 1 / sqrt(omega), z = z)
+}
+```
+
+
+```{r}
+# Create prior
+d <- ncol(X)
+prior <- list(m0 = numeric(d), K0 = Diagonal(d), a0 = 1, b0 = 0.1, tau = 1)
+
+# Run the sampler
+nsim <- 1000
+set.seed(999)
+res1 <- gibbs_sampler1(nsim, X, y, prior)
+```
+
+```{r}
+describe <- function(x) {
+  data_frame(mean = mean(x), sd = sd(x), low95 = quantile(x, 0.025), up95 = quantile(x, 0.975))
+} 
+beta <- res1$beta
+beta %>% 
+  data.frame() %>% 
+  map(describe) %>% 
+  bind_rows() %>% 
+  add_column(variable = colnames(X), .before = 1) 
+```
+
+```{r}
+par(mfrow = c(3, 3))
+for (j in 1:ncol(beta)) {
+  plot(beta[ , j], 
+       type = "l", col = "blue",
+       main = colnames(X)[j], 
+       xlab = "", ylab = "") 
+  abline(h=0, col = "red", lt = 2)
+}
+```
+
+This clearly doesn't work super well. it took a long time for the chain to reach a stationary state; and it is very correlated. My explanation is that the variance should NOT be estimated! This is an identifiability problem. Instead I suggest to fix the variance at one.
+
+In any case, let's take a look at the predictions, they should work fine.
+
+```{r}
+burnin <- 100
+pred <- X %*% t(beta) %>% 
+  apply(1, function(row) mean(as.integer(row > 0)))
+table(obs = y, pred = round(pred))
+```
+
+Accuracy
+
+```{r}
+sum(round(pred) == y) / length(y)
+```
+
+This is the accuracy we would get by simply predicting zero always
+
+```{r}
+sum(y == 0) / length(y)
+```
+
+----
+
+
+[Back to Index](#TOC)
+
+
+Another choice for $g^{-1}(\theta)$ might be the logit function, $\frac{1}{1+e^{-x^T\beta}}$. In this case, it's less obvious to see how we can construct an auxilliary variable representation (it's not impossible! See \citet{PolScoWin2013}. But for now, we'll assume we haven't come up with something). So, we're stuck with working with the posterior distribution over $\beta$.
+
+### Exercise 2
+
+*Sadly, the posterior isn't in a "known" form. As a starting point, let's find the maximum a posteriori estimator (MAP). The dataset "titantic.csv"" contains survival data from the Titanic; we're going to look at probability of survival as a function of age. For now, we're going to assume the intercept of our regression is zero -- i.e.\ that $\beta$ is a scalar.  Write a function (that can use a black-box optimizer! No need to reinvent the wheel. It shouldn't be a long function) to estimate the MAP of $\beta$. Note that the MAP corresponds to the frequentist estimator using a ridge regularization penalty.*
+
+*Solution*. This time instead of latent variables we'll put a prior
+$$
+\beta \sim N(\mu_0, \sigma_0^2)
+$$
+and likelihood (we'll treat the $x_i$ as fixed)
+$$
+y_i | x_i, \beta \sim \mathrm{Binom}\left(m_i, w_i(\beta)\right)
+$$
+where 
+$$
+w_i(\beta) = \frac{1}{1 + \exp\{-x_i'\beta\}}. 
+$$
+Then
+$$
+\mathbb{P}(y_i = y \mid \beta) =w_i(\beta)^y(1 - w_i(\beta))^{1 - y}
+$$
+The MAP (maximum a posteriori), is the max of the posterior.
+$$
+p(\beta \mid y) \propto p(y \mid \beta)p(\beta)
+$$
+Equivalently, we can minimize ($\simeq$ will mean equal up to a constant not depending on $\beta$)
+$$
+\begin{aligned}
+-\log(p(y \mid \beta)) - \log(p(\beta)) & \simeq -\sum_i \left(y_i\log(w_i(\beta)) + (1 - y_i)\log(1 - w_i(\beta))\right) + \frac{1}{2\sigma^2_0}(\beta - \mu)^2
+\end{aligned}
+$$
+
+Now let's optimize it for the titanic data.
+
+```{r}
+library(tidyverse)
+library(Matrix)
+library(mvtnorm)
+```
+
+```{r}
+titanic <- read_csv("./titanic.csv") %>% 
+  na.omit() %>% 
+  mutate(Survived = if_else(Survived == "Yes", 1, 0))
+head(titanic)
+```
+
+
+For this one dimensional problem we'll predict survival using age only.
+
+```{r}
+X <- titanic %>% 
+  select(Age) %>% 
+  data.matrix()
+y <- titanic %>% 
+  pull(Survived)
+```
+
+Define the function to evaluate the negative logposterior
+
+```{r}
+neg_lposterior <- function(beta, X, y, prior) {
+  w = drop(1 / (1 + exp(-X %*% beta)))
+  w = pmin(pmax(w, 1e-12), 1 - 1e-12)
+  Sigma = as.matrix(Diagonal(ncol(X)) * prior$sigma0^2)
+  -sum(y * log(w) + (1 - y) * log(1 - w)) - dmvnorm(beta, prior$mu0, Sigma, log = TRUE)
+}
+```
+
+```{r}
+prior <- list(mu0 = 0, sigma0 = 10)
+test_beta <- seq(-2, 2, length.out = 1000)
+post_values <- map_dbl(test_beta, ~neg_lposterior(., X, y, prior))
+```
+
+```{r}
+plot(test_beta, post_values, type = "l", col = "blue", main = "negative log posterior")
+```
+
+Obtain the MAP
+
+```{r}
+optim_sol <- optimize(function(beta) neg_lposterior(beta, X, y, prior), lower = -1, upper = 1)
+beta_map <- optim_sol$minimum
+beta_map
+```
+
+Let's verify this
+
+```{r}
+post_values <- map_dbl(test_beta, ~neg_lposterior(., X, y, prior))
+plot(test_beta, post_values, type = "l", col = "blue", main = "negative log posterior")
+abline(v = beta_map, col = "red", lt = 2)
+legend("topright", c(expression(f(beta : y)), expression(beta[MAP])), col = c("blue", "red"), lt = c(1, 2))
+```
+
+```{r}
+plot(X, y, pch = 21, bg = alpha("red", 0.1), col = "red")
+pred <- 1 / (1 + exp(-X * beta_map))
+lines(X, pred, col = "blue")
+```
+
+We see his is not a very good model; it is important to note that we did not include an intercept at all.
+
+----
+
+
+[Back to Index](#TOC)
+
+### Exercise 3
+
+*OK, we don't know how to sample from the posterior, but we can at least look at it. Write a function to calculate the posterior pdf $p(\beta|\mathbf{x},\mathbf{y},\mu,\sigma^2)$, for some reasonable hyperparameter values $\mu$ and $\theta$ (up to a normalizing constant is fine!). Plot over a reasonable range of $\beta$ (your MAP from the last question should give you a hint of a reasonable range).*
+
+*Solution*. This was already done in exercise 2 above.
+
+
+
+The Laplace approximation is a method for approximating a distribution with a Gaussian, by matching the mean and variance at the mode.\footnote{More generally, the Laplace approximation is used to approximate integrands of the form $\int_A e^{Nf(x)} dx$... but for our purposes we will always be working with PDFs.} Let $P^*$ be the (unnormalized) PDF  of a distribution we wish to approximate. We start by taking a Taylor expansion of the log (unnormalized) PDF at the global maximizing value $x^*$
+
+$$\log P^*(x) \approx \log P^*(x^*) - \frac{c}{2}(x-x^*)^2$$
+
+where $c = -\frac{\delta^2}{\delta x^2}\log P^*(x)\Big\rvert_{x=x^*}$.
+
+We approximate $P^*$ with an unnormalized Gaussian, with the same mean and variance as $P^*$:
+$$Q^*(x) = P^*(x^*)\exp\left\{-\frac{c}{2}(x-x^*)^2\right\}$$
+
+----
+
+
+[Back to Index](#TOC)
+
+### Exercise 4
+
+Find the mean and precision of a Gaussian that can be used in a Laplace approximation to the posterior distribution over $\beta$.
+
+*Solution*. The gradient and hessian of the prior term are trivial, we need only about computing the Hessian of the negative loglikelihood. 
+
+Start by defining the sigmoid function
+$$
+\begin{aligned}
+\sigma \colon & \mathbb{R} \to [0,1] \\ 
+& u \mapsto \frac{1}{1 + e^{-u}}.
+\end{aligned}
+$$
+Then $w_i(\beta) = \sigma(x_i^\top \beta)$. This function has the nice property that
+$$
+\begin{aligned}
+\frac{\partial}{\partial u}\sigma(u)  &= \frac{\partial}{\partial u} \left(1 + \exp(-u) \right)^{-1} \\
+&= -\left(1 + \exp(-u) \right)^{-2} \exp(-u) \\
+&= -\sigma(u)^2 \left( \frac{1}{\sigma(u)} - 1 \right) \\
+&= -\sigma(u)\left(1 - \sigma(u)\right).
+\end{aligned}
+$$
+It follows that
+$$
+\nabla_\beta w_i(\beta) = w_i(\beta)(1 - w_i(\beta))x_i
+$$
+We can write this in matrix form. The *Jacobian* matrix $\nabla_\beta w(\beta) \in \mathbb{R}^{N \times P}$ of the map $\beta  \mapsto (w_1(\beta),...,w_N(\beta))$ is the matrix whose $i$-th row is $\nabla_iw(\beta)$. If we write $W = \textrm{diag}(w(\beta))$, we see that
+$$
+\nabla_\beta w(\beta) = \Lambda X.
+$$
+where $\Lambda = \mathrm{diag}(w_1,...,w_n)$. Denote the negative loglikelihood as $l(\beta)$ for convenience. Using the chain rule
+$$
+\begin{aligned}
+\nabla_\beta l(\beta) &= \nabla_\beta  \left\{ - \sum_{i = 1}^N y_i\log(w_i(\beta)) + (1 - y_i)\log(1 - w_i(\beta)) \right\} \\
+&= - \sum_{i = 1}^N \left\{ y_i \frac{\nabla_\beta{w_i(\beta)}}{w_i(\beta)} -  (1 - y_i) \frac{\nabla_\beta{w_i(\beta)}}{ 1- w_i(\beta)} \right\} \\
+&= - \sum_{i = 1}^N \left\{ y_i (1 - w_i(\beta))x_i -  (1 - y_i)w_i(\beta)x_i \right\} \\
+&= - \sum_{i = 1}^N  (y_i - w_i(\beta))x_i. \\
+\end{aligned}
+$$
+In matrix form
+$$
+\nabla_\beta l(\beta) = -X'(y - w(\beta))
+$$
+From here, obtaining the Hessian of $l$ is very simple
+In matrix form
+$$
+\nabla^2_\beta l(\beta) = -X'\nabla_\beta w(\beta) = -X'\Lambda X.
+$$
+Finally, we include the posterior term
+$$
+ -\nabla^2_\beta \log p(\beta \mid y) \bigg\vert_{\beta = \beta_*} = X'\Lambda X + \frac{1}{\sigma_0^2}I
+$$
+
+Thus, for the Laplace approximation we will use a Gaussian distribution with covariance matrix $(X'\Lambda X + I/\sigma_0^2)^{-1}$ centered at $\beta_\text{MAP}$. Let's show it works
+
+```{r}
+test_beta <- seq(-.03, 0, length.out = 1000)
+logposterior <- map_dbl(test_beta, ~ -neg_lposterior(., X, y, prior))
+
+w_map <- drop(1 / (1 + exp(- X %*% beta_map)))
+value_map <- -neg_lposterior(beta_map, X, y, prior)
+Lambda <- Diagonal(x =  w_map * (1 - w_map))
+hess <- drop(crossprod(X, Lambda %*% X) + Diagonal(ncol(X)) / prior$sigma0^2)
+loglaplace <- map_dbl(test_beta, ~ value_map - 0.5*crossprod(. - beta_map, hess %*% (. - beta_map)))
+```
+
+```{r}
+plot(test_beta, exp(loglaplace), type = "l", col = "red", main = "Laplace approximation")
+lines(test_beta, exp(logposterior), col = "blue", lt = 3, lw = 2)
+legend("topleft", c("laplace approx", "posterior"), col = c("red", "blue"), lt = c(1, 3), lw = c(1, 2))
+```
+
+The above shows that the Laplace approximation is almost identical!
+
+----
+
+[Back to Index](#TOC)
+
+### Exercise 5
+
+  *That's all well and good... but we probably have a non-zero intercept.  We can extend the Laplace approximation to multivariate PDFs. This amounts to estimating the precision matrix of the approximating Gaussian using the negative of the Hessian -- the matrix of second derivatives
+$$H_{ij} = \frac{\delta^2}{\delta x_i \delta x_j}\log P^*(x)\Big\rvert_{x=x^*}$$
+  Use this to approximate the posterior distribution over $\beta$. Give the form of the approximating distribution, plus 95\% marginal credible intervals for its elements.*
+
+*Solution*. Luckily, we already developed the theory for themultivariate version in the previous exercise. I'll just modify *X* and run the the optimizer again.
+
+```{r}
+X <- model.matrix(~ Age, data = titanic)
+head(X)
+```
+
+Solution 
+
+```{r}
+prior <- list(mu0 = c(0, 1), sigma0 = 10)
+optim_sol <- optim(c(0, 0), function(beta) neg_lposterior(beta, X, y, prior))
+beta_map <- optim_sol$par
+beta_map
+```
+
+
+Now the Laplace approximation
+
+```{r}
+w_map <- drop(1 / (1 + exp(- X %*% beta_map)))
+value_map <- -neg_lposterior(beta_map, X, y, prior)
+Lambda <- Diagonal(x =  w_map * (1 - w_map))
+hess <- drop(crossprod(X, Lambda %*% X) + Diagonal(ncol(X)) / prior$sigma0^2)
+# loglaplace <- map_dbl(test_beta, ~ value_map - 0.5*drop(crossprod(. - beta_map, hess %*% (. - beta_map))))
+```
+
+The covariance matrix is 
+
+```{r}
+covmat = solve(hess)
+covmat
+```
+
+From here we obtain the marginal distributions
+
+
+```{r}
+intercept_int <- qnorm(p = c(.025, .975), mean = beta_map[1], sd = sqrt(covmat[1, 1])) 
+age_int <- qnorm(p = c(.025, .975), mean = beta_map[2], sd = sqrt(covmat[2, 2]))
+data_frame(
+  variable = c('(Intercerpt)', 'Age'),
+  mode = beta_map,
+  sd = sqrt(diag(covmat)),
+  'lower 95%' = c(intercept_int[1], age_int[1]),
+  'upper 95%' = c(intercept_int[2], age_int[2]))
+```
+
+For comparison, we verify against R's base glm function. We see that the results are extremely similar, including the standard deviation. Tiny differences are expected because of the approximation, but also the prior.
+
+```{r}
+mod <- glm(Survived ~ Age, family = binomial(), titanic)
+summary(mod)
+```
+
+----
+
+[Back to Index](#TOC)
+
+ We're going to work with the dataset `tea_discipline_oss.csv`, a dataset gathered by Texas Appleseed, looking at the number of out of school suspensions (ACTIONS) accross schools in Texas. The data is censored for privacy reasons -- data points with fewer than 5 actions are given the code ``-99''. For now, we're going to exclude these data points. 
+
+### Exercise 6
+
+*We're going to use a Poisson model on the counts. Ignoring the fact that the data is censored, why is this not quite the right model? Hint: there are several answers to this -- the most fundamental involve considering the support of the Poisson.*
+
+*Solution*
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+discipline <- read_csv("./tea_discipline_oss.csv") %>% 
+  na.omit()
+head(discipline)
+```
+
+The following shows table shows the frequency of observations; -99 indicated the censored values.
+
+```{r}
+tbl <- table(discipline$ACTIONS)
+df_tbl <- data_frame(value = names(tbl), count = as.integer(tbl))
+df_tbl
+```
+
+```{r}
+barplot(df_tbl$count[-1], names = df_tbl$value[-1], main = "Frecuency of displinary actions")
+```
+
+
+If we observe a few things
+
+- The value start at 5, which will be a problem for the Poission
+- Even if it wasn't censored, the Poisson always has positive probability of output zero, but this dataset contains data of people with positive actions only.
+- If we see the graph, we observe that the distribution has very fat tails, so the Poisson wouldn't also be a good fit in this sense.
+
+----
+
+[Back to Index](#TOC)
+
+### Exercise 7
+
+*Let's assume our only covariate of interest is GRADE\footnote{I have manually replaced Kindergarten and Pre-K with Grades 0 and -1, respectively.} and put a normal prior on $\beta$. Using a Laplace approximation and an appropriately vague prior, find  95\% marginal credible intervals for the entries of $\beta$. You'll probably want to use an intercept.*
+
+*Solution*. The derivations of the derivatives is very similar. Define $w_i(\beta) = \exp\{x_i'\beta\}$, our likelihood this time is $y_i \sim \Po(w(\beta_i))$. Denote the negative loglikelihood as $l(\beta)$ as before, then
+$$
+\begin{aligned}
+\nabla_\beta l(\beta) &= \nabla_\beta  \left\{ - \sum_{i = 1}^N(y_i\log(w_i(\beta)) - w_i(\beta)) \right\} \\
+&= - \sum_{i = 1}^N \left\{ y_ix_i -  w_i(\beta) x_i \right\} \\
+&= - \sum_{i = 1}^N  (y_i - w_i(\beta))x_i. \\
+&= - X'(y - w). \\
+\end{aligned}
+$$
+Interestingly, we arrive to the same form of the gradient as in the binomial case. The Hessian of $l$ is
+$$
+\nabla^2_\beta l(\beta) = -X'\nabla_\beta w(\beta) = -X'W X.
+$$
+As before, we'll use a prior $\beta \sim N(0, \sigma_0^2 I)$. So the Hessian of the negative logposterior is
+$$
+ -\nabla^2_\beta \log p(\beta \mid y) \bigg\vert_{\beta = \beta_*} = X' W X + \frac{1}{\sigma_0^2}I.
+$$
+
+Now let's do this with the data
+
+```{r}
+uncensored <- discipline %>% 
+  filter(ACTIONS != -99) 
+ethnicities <- unique(uncensored$ETHNICX)[-3] # remove white from the lsit
+uncensored$ETHNICX <- factor(uncensored$ETHNICX, levels = c("White", ethnicities)) # make sure white is base group
+uncensored$SEXX <- factor(uncensored$SEXX, levels = c("MALE", "FEMALE")) # male is base group
+X <- uncensored %>% 
+  model.matrix(~ GRADE + ETHNICX + SEXX, data = .)
+y <- uncensored %>% 
+  pull(ACTIONS)
+```
+
+
+Now the Laplace approximation
+
+```{r}
+neg_lposterior <- function(beta, X, y, prior) {
+  w = exp(X %*% beta)
+  w = pmax(w, 1e-24)
+  Sigma = as.matrix(Diagonal(ncol(X)) * prior$sigma0^2)
+  -sum(y * log(w) - w) - dmvnorm(beta, prior$mu0, Sigma, log = TRUE)
+}
+neg_lposterior_grad <- function(beta, X, y, prior) {
+  w = exp(X %*% beta)
+  drop(-crossprod(X, y - w)) - beta / prior$sigma0^2
+}
+```
+
+```{r}
+prior <- list(mu0 = numeric(ncol(X)), sigma0 = 10)
+fn <- function(beta) neg_lposterior(beta, X, y, prior)
+gr <- function(beta) neg_lposterior_grad(beta, X, y, prior)
+optim_sol <- optim(numeric(ncol(X)), fn = fn, gr = gr)
+beta_map <- setNames(optim_sol$par, nm = colnames(X))
+beta_map
+```
+
+```{r}
+w_map <- exp(X %*% beta_map)
+value_map <- -neg_lposterior(beta_map, X, y, prior)
+Lambda <- Diagonal(x = w_map)
+hess <- drop(crossprod(X, Lambda %*% X) + Diagonal(ncol(X)) / prior$sigma0^2)
+covmat = solve(hess)
+```
+
+From here we obtain the marginal distributions
+
+```{r}
+low <- map_dbl(1:ncol(X), ~qnorm(.025, mean = beta_map[.], sd = sqrt(covmat[., .])) )
+upp <- map_dbl(1:ncol(X), ~qnorm(.975, mean = beta_map[.], sd = sqrt(covmat[., .])) )
+data_frame(
+  variable = colnames(X),
+  mode = beta_map,
+  sd = sqrt(diag(covmat)),
+  'lower 95%' = low,
+  'upper 95%' = upp)
+```
+
+And know a table of predictions vs observed (we anticipate big errors at the tale)
+
+```{r}
+tbl <- table(obs = y, pred = round(w_map))[1:10, 1:10]
+tbl
+```
+
+```{r}
+plot(tbl, main = "Observed vs Predicted")
+```
+
+
+
+----
+
+[Back to Index](#TOC)
