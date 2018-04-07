@@ -597,7 +597,125 @@ plot(tbl, main = "Observed vs Predicted")
 ```
 
 
+[Back to Index](#TOC)
 
 ----
+
+
+### Exercise 8
+
+*I did this already in exercise 7.*
+
+[Back to Index](#TOC)
+
+----
+
+Even though we don't have conjugacy, we can still use MCMC methods -- we just can't use our old friend the Gibbs sampler. Since this isn't an MCMC course, let's use STAN, a probabilistic programming language available for R, python and Matlab. I'm going to assume herein that we're using RStan, and give appropriate scripts; it should be fairly straightforward to use if you're an R novice, or if you want to use a different language, there are hints on translating to PyStan at `http://pystan.readthedocs.io/en/latest/differences\_pystan\_rstan.html` and info on MatlabStan (which seems much less popular) at `http://mc-stan.org/users/interfaces/matlab-stan`.
+
+
+[Back to Index](#TOC)
+
+----
+
+### Exercise 9
+
+*Download the sample STAN script \texttt{poisson.stan} and corresponding R script \texttt{run\_poisson\_stan.R}. The R script should run the  regression vs GRADE from earlier (feel free to change the prior parameters). Run it and see how the results differ from the Laplace approximation. Modify the scripy to include more variables, and present your results.*
+  
+*Solution*. Here's the stan model we are going to run. The model is saved as a variable `stanmodel9`.
+
+```{r}
+library(rstan)
+```
+
+```{stan output.var='stanmodel9'}
+// When run, this script generates the variable stanmodel9
+// Basic Poisson glm
+data {
+  // Define variables in data
+  // Number of observations (an integer)
+  int<lower=0> N;
+  // Covariates
+  int <lower=0, upper=1> intercept[N];
+  int <lower=-1, upper=12> x[N];
+  // Count outcome
+  int<lower=0> y[N];
+}
+
+parameters {
+  // Define parameters to estimate
+  real beta[2];
+}
+
+transformed parameters  {
+  //
+  real lp[N];
+  real <lower=0> mu[N];
+  
+  for (i in 1:N) {
+    // Linear predictor
+    lp[i] = beta[1]*intercept[i] + beta[2]*x[i];
+    // Mean
+    mu[i] = exp(lp[i]);
+  }
+}
+
+model {
+  // Prior part of Bayesian inference
+  beta[1]~normal(0,1);
+  beta[2]~normal(0,1);
+  // Likelihood part of Bayesian inference
+  y ~ poisson(mu);
+}
+```
+
+We now run it
+
+```{r}
+standata = list(N = nrow(X), intercept = X[, '(Intercept)'], x = X[ ,'GRADE'], y = y)
+res9 <- sampling(stanmodel9, 
+  data = standata, 
+  chains = 2,
+  iter = 1000,
+  cores = 2,
+  pars = "beta")
+```
+
+```{r}
+traceplot(res9)
+```
+
+```{r}
+describe <- function(x) {
+  data_frame(mean = mean(x), sd = sd(x), low95 = quantile(x, 0.025), up95 = quantile(x, 0.975))
+} 
+```
+
+```{r}
+beta <- extract(res9, "beta")[[1]]
+beta <- data.frame(beta)
+beta %>% 
+  map(describe) %>% 
+  bind_rows() %>% 
+  add_column(variable = c("(Intercept)", "GRADE"), .before = 1)
+```
+
+[Back to Index](#TOC)
+
+----
+
+### Exercise 10
+
+*Consider ways you might improve your regression (still, using the censored data) - while staying in the GLM framework.  Ideas might include hierarchical error modeling (as we looked at in the last set of exercises), interaction terms... or something else! Looking at the data may give you inspiration. Implement this in STAN.*
+
+  
+[Back to Index](#TOC)
+
+----
+
+### Exercise 10
+*We are throwing away a lot of information by not using the censored data. Come up with a strategy, and write down how you would alter your model/sampler. Bonus points for actually implementing it in STAN (hint: look up the section on censored data in the STAN manual)*
+
+  
+  
 
 [Back to Index](#TOC)
