@@ -130,7 +130,7 @@ d <- ncol(X)
 prior <- list(m0 = numeric(d), K0 = Diagonal(d), a0 = 1, b0 = 0.1, tau = 1)
 
 # Run the sampler
-nsim <- 1000
+nsim <- 10000
 set.seed(999)
 res1 <- gibbs_sampler1(nsim, X, y, prior)
 ```
@@ -707,7 +707,7 @@ describe <- function(x) {
 ```
 
 ```{r}
-beta <- extract(res9, "beta")[[1]]
+beta <- rstan::extract(res9, "beta")[[1]]
 beta <- data.frame(beta)
 beta %>% 
   map(describe) %>% 
@@ -749,10 +749,21 @@ parameters {
   real<lower=0> phi; // overdispersion
 }
 
+transformed parameters {
+  vector[N] mu = X * beta; // logintensity
+}
+
 model {
   beta ~ normal(mu0, sigma0);
-  y ~ neg_binomial_2_log(X * beta, phi);
+  y ~ neg_binomial_2_log(mu, phi);
 }
+
+generated quantities {
+  vector[N] y_predict;
+  for (i in 1:N)
+    y_predict[i] = neg_binomial_2_log_rng(mu[i], phi);
+}
+
 ```
 
 We now run it
@@ -761,31 +772,29 @@ We now run it
 standata = list(N = nrow(X), D = ncol(X), X = X, y = y, mu0 = 0, sigma0 = 10)
 res10 <- sampling(stan10, 
   data = standata, 
-  chains = 2,
+  chains = 1,
   iter = 500,
-  warmup = 100,
-  cores = 3)
+  cores = 2)
 ```
   
 ```{r}
-traceplot(res10)
+traceplot(res10, pars = c("beta", "phi"))
 ```
 
-Let's comparaed the observation and mean predictions now
+Let's compare the observation and mean predictions now
 
 ```{r}
-beta <- rstan::extract(res10, "beta")[[1]]
-mu <- exp(X %*% t(beta))
-mu_mean <- apply(mu, 1, mean)
-mu_sd <- apply(mu, 1, sd)
-mu_mode_round <- apply(round(mu), 1, function(r) {u <- unique(r); u[which.max(tabulate(match(r, u)))]})
+yhat <- rstan::extract(res10, "y_predict")[[1]]
+mu_mean <- apply(yhat, 2, mean)
+mu_sd <- apply(yhat, 2, sd)
+mu_mode_round <- apply(yhat, 2, function(r) {u <- unique(r); u[which.max(tabulate(match(r, u)))]})
 pred_df <- data_frame(observed = y, "pred. mean" = mu_mean, "pred. sd" = mu_sd, "pred. round mode" = mu_mode_round)
 pred_df
 ```
 
 
 ```{r}
-tbl = table(observed = y, prediced = mu_mode_round)[1:15, 1:15]
+tbl = table(observed = y, predicted = mu_mode_round)[1:15, 1:15]
 tbl
 ```
 
@@ -795,6 +804,16 @@ The inclusion of the negative binomial part did not help. We now predict much be
 plot(tbl)
 ```
 
+```{r}
+yhat2 <- as.integer(yhat)
+hist(y[y < 40], breaks = 30, col = alpha("red", 0.2), prob = TRUE, 
+     main = "distribution observed vs posterior predictive mode", xlim = c(0, 40))
+hist(yhat2[yhat2 < 40], breaks = 30, col = alpha("blue", 0.2), prob = TRUE, add = TRUE)
+legend("topright", c("observed", "predicted"), col = c("red", "blue"), pch = 20)
+```
+
+This model does a very good job in matching the shape. Unfortunately, it puts mass in zero where there should be none. Also it fails for small values.
+
 [Back to Index](#TOC)
 
 ----
@@ -802,7 +821,145 @@ plot(tbl)
 ### Exercise 11
 *We are throwing away a lot of information by not using the censored data. Come up with a strategy, and write down how you would alter your model/sampler. Bonus points for actually implementing it in STAN (hint: look up the section on censored data in the STAN manual)*
 
-  
-  
+*Solution*. In addition to the negative binomial model above, we will now include censored data.
+
+```{r}
+library(rstan)
+library(tidyverse)
+library(Matrix)
+```
+
+```{r}
+discipline <- read_csv("./tea_discipline_oss.csv") %>% 
+  slice(sample(nrow(.), 2500)) %>% 
+  na.omit()
+```
+
+```{stan output.var='stan11'}
+data {
+  // Dimensions
+  int<lower=1> N_obs;
+  int<lower=0> N_cens;
+  int<lower=1> D; 
+  // Data
+  matrix[N_obs, D] X_obs;
+  matrix[N_cens, D] X_cens;
+  int y_obs[N_obs];
+  // Prior hyperparams
+  real mu0;
+  real<lower=0> sigma0;
+}
+
+parameters {
+  vector[D] beta; // logintensity
+  real<lower=0> phi; // overdispersion
+}
+
+transformed parameters  {
+  vector[N_obs] mu_obs = X_obs * beta;
+  vector[N_cens] mu_cens = X_cens * beta;
+}
+
+model {
+  beta ~ normal(mu0, sigma0);
+  y_obs ~ neg_binomial_2_log(mu_obs, phi);
+  // (log) Likelihood for censored values
+  for (n in 1:N_cens) {
+    target += neg_binomial_2_log_lpmf(4 | mu_cens[n], phi);
+  }
+}
+
+generated quantities {
+  vector[N_obs] y_predict_obs;
+  vector[N_cens] y_predict_cens;
+  for (i in 1:N_obs)
+    y_predict_obs[i] = neg_binomial_2_log_rng(mu_obs[i], phi);
+  for (i in 1:N_cens)  
+    y_predict_cens[i] = neg_binomial_2_log_rng(mu_cens[i], phi);
+}
+
+```
+
+```{r}
+# ethnicities <- unique(discipline$ETHNICX)[-1] # remove white from the lsit
+# discipline$ETHNICX <- factor(discipline$ETHNICX, levels = c("White", ethnicities)) # make sure white is base group
+# discipline$SEXX <- factor(discipline$SEXX, levels = c("MALE", "FEMALE")) # male is base group
+X <- discipline %>% 
+  model.matrix(~ GRADE + ETHNICX + SEXX, data = .)
+y <- discipline %>% 
+  pull(ACTIONS)
+```
+
+
+```{r}
+X_obs <- X[y != -99, ]
+X_cens <-  X[y == -99, ]
+y_obs <-  y[y != -99]
+stan_data <- list(
+  N_obs = nrow(X_obs),
+  N_cens = nrow(X_cens),
+  D = ncol(X),
+  X_obs = X_obs,
+  X_cens = X_cens,
+  y_obs = y_obs,
+  mu0 = 0, 
+  sigma0 = 10
+)
+```
+
+```{r}
+res11 <- sampling(stan11, 
+  data = stan_data, 
+  chains = 1,
+  pars = c("beta", "phi", "y_predict_obs", "y_predict_cens"),
+  iter = 500)
+```
+
+
+```{r}
+traceplot(res11, pars = c("beta", "phi"))
+```
+
+Let's compare the observation and mean predictions now
+
+```{r}
+yhat <- rstan::extract(res11, "y_predict_obs")[[1]]
+yhat_cens <- rstan::extract(res11, "y_predict_cens")[[1]]
+mu_mean <- apply(yhat, 2, mean)
+mu_sd <- apply(yhat, 2, sd)
+mu_mode_round <- apply(yhat, 2, function(r) {u <- unique(r); u[which.max(tabulate(match(r, u)))]})
+pred_df <- data_frame(observed = y_obs, "pred. mean" = mu_mean, "pred. sd" = mu_sd, "pred. round mode" = mu_mode_round)
+pred_df
+```
+
+
+```{r}
+tbl = table(observed = y_obs, predicted = mu_mode_round)[1:15, 1:14]
+tbl
+```
+
+The inclusion of the negative binomial part did not help. We now predict much better the tails, but at the expense predicting higher values always.
+
+```{r}
+plot(tbl)
+```
+
+```{r}
+pnts <- map(1:length(y_obs), ~data.frame(observed = y_obs[.x], predicted = yhat[ ,.x])) %>% 
+  bind_rows()
+plot(pnts, xlim = c(0, 40), ylim = c(0, 40), pch = 16, col = alpha("blue", 0.005))
+```
+
+```{r}
+yhat2 <- as.integer(yhat)
+yhat3 <- as.integer(yhat_cens)
+hist(y_obs[y_obs < 40], breaks = 30, col = alpha("red", 0.2), prob = TRUE, 
+     main = "distribution observed vs posterior predictive mode", xlim = c(0, 40))
+hist(yhat2[yhat2 < 40], breaks = 30, col = alpha("blue", 0.2), prob = TRUE, add = TRUE)
+hist(yhat3[yhat3 < 40], breaks = 30, col = alpha("green", 0.2), prob = TRUE, add = TRUE)
+legend("topright", c("observed", "predicted (obs)", "predicted (cens)"), col = c("red", "blue", "green"), pch = 20)
+```
+
+This model does an even better job in capturing the shape thanks to including the censore data. The problem is mass at zero only, but we'll do that in another day. One problem with this model is that while the prediction is accurate, the model is extremely dispersed.
 
 [Back to Index](#TOC)
