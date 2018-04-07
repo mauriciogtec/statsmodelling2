@@ -23,7 +23,7 @@ knitr::opts_chunk$set(message = FALSE, warning = FALSE)
 
 # Section 3: Bayesian GLMs
 
-## Modeling non-Gaussian observations
+## Modelling non-Gaussian observations
 
 So far, we've assumed real-valued observations. In this setting, our likelihood model is a univariate normal, parametrized by a mean $x_i^T\beta$ and some precision that does not directly depend on the value of $x_i$. In general, $x_i^T\beta$ will take values in $\mathbb{R}$
 
