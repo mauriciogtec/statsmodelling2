@@ -19,7 +19,7 @@ knitr::opts_chunk$set(message = FALSE, warning = FALSE)
 ```
 
 
-# Section 3
+# Section 3> Bayesian GLMs
 
 ## Modeling non-Gaussian observations
 
@@ -153,10 +153,12 @@ for (j in 1:ncol(beta)) {
   plot(beta[ , j], 
        type = "l", col = "blue",
        main = colnames(X)[j], 
-       xlab = "", ylab = "") 
+       xlab = "", 
+       ylab = "")
   abline(h=0, col = "red", lt = 2)
 }
 ```
+
 
 This clearly doesn't work super well. it took a long time for the chain to reach a stationary state; and it is very correlated. My explanation is that the variance should NOT be estimated! This is an identifiability problem. Instead I suggest to fix the variance at one.
 
@@ -427,7 +429,6 @@ w_map <- drop(1 / (1 + exp(- X %*% beta_map)))
 value_map <- -neg_lposterior(beta_map, X, y, prior)
 Lambda <- Diagonal(x =  w_map * (1 - w_map))
 hess <- drop(crossprod(X, Lambda %*% X) + Diagonal(ncol(X)) / prior$sigma0^2)
-# loglaplace <- map_dbl(test_beta, ~ value_map - 0.5*drop(crossprod(. - beta_map, hess %*% (. - beta_map))))
 ```
 
 The covariance matrix is 
@@ -472,6 +473,8 @@ summary(mod)
 
 ```{r}
 library(tidyverse)
+library(Matrix)
+library(mvtnorm)
 ```
 
 ```{r}
@@ -569,7 +572,7 @@ w_map <- exp(X %*% beta_map)
 value_map <- -neg_lposterior(beta_map, X, y, prior)
 Lambda <- Diagonal(x = w_map)
 hess <- drop(crossprod(X, Lambda %*% X) + Diagonal(ncol(X)) / prior$sigma0^2)
-covmat = solve(hess)
+covmat <-  solve(hess)
 ```
 
 From here we obtain the marginal distributions
@@ -596,6 +599,23 @@ tbl
 plot(tbl, main = "Observed vs Predicted")
 ```
 
+Total accuracy
+
+```{r}
+sum(round(w_map) == y) / length(y)
+```
+
+Accuracy up to one error
+
+```{r}
+sum(abs(round(w_map) - y) <= 1) / length(y)
+```
+
+Accuracy up to two error
+
+```{r}
+sum(abs(round(w_map) - y) <= 2) / length(y)
+```
 
 [Back to Index](#TOC)
 
@@ -612,10 +632,6 @@ plot(tbl, main = "Observed vs Predicted")
 
 Even though we don't have conjugacy, we can still use MCMC methods -- we just can't use our old friend the Gibbs sampler. Since this isn't an MCMC course, let's use STAN, a probabilistic programming language available for R, python and Matlab. I'm going to assume herein that we're using RStan, and give appropriate scripts; it should be fairly straightforward to use if you're an R novice, or if you want to use a different language, there are hints on translating to PyStan at `http://pystan.readthedocs.io/en/latest/differences\_pystan\_rstan.html` and info on MatlabStan (which seems much less popular) at `http://mc-stan.org/users/interfaces/matlab-stan`.
 
-
-[Back to Index](#TOC)
-
-----
 
 ### Exercise 9
 
@@ -707,12 +723,83 @@ beta %>%
 
 *Consider ways you might improve your regression (still, using the censored data) - while staying in the GLM framework.  Ideas might include hierarchical error modeling (as we looked at in the last set of exercises), interaction terms... or something else! Looking at the data may give you inspiration. Implement this in STAN.*
 
+We are going to do the following changes:
+
+- Include multivariate regression
+- Include a diffuse prior
+- Negative binomial regression, with overdispersion parameter
+
+```{stan output.var='stan10'}
+// When run, this script generates the variable stanmodel9
+// Basic Poisson glm
+data {
+  // Dimensions 
+  int <lower=0> N;
+  int <lower=0> D;
+  // Covariates and count outcome
+  matrix[N, D] X;
+  int <lower=0> y[N];
+  // Prior hyperparams
+  real mu0;
+  real<lower=0> sigma0;
+}
+
+parameters {
+  vector[D] beta; // logintensity
+  real<lower=0> phi; // overdispersion
+}
+
+model {
+  beta ~ normal(mu0, sigma0);
+  y ~ neg_binomial_2_log(X * beta, phi);
+}
+```
+
+We now run it
+
+```{r}
+standata = list(N = nrow(X), D = ncol(X), X = X, y = y, mu0 = 0, sigma0 = 10)
+res10 <- sampling(stan10, 
+  data = standata, 
+  chains = 2,
+  iter = 500,
+  warmup = 100,
+  cores = 3)
+```
   
+```{r}
+traceplot(res10)
+```
+
+Let's comparaed the observation and mean predictions now
+
+```{r}
+beta <- rstan::extract(res10, "beta")[[1]]
+mu <- exp(X %*% t(beta))
+mu_mean <- apply(mu, 1, mean)
+mu_sd <- apply(mu, 1, sd)
+mu_mode_round <- apply(round(mu), 1, function(r) {u <- unique(r); u[which.max(tabulate(match(r, u)))]})
+pred_df <- data_frame(observed = y, "pred. mean" = mu_mean, "pred. sd" = mu_sd, "pred. round mode" = mu_mode_round)
+pred_df
+```
+
+
+```{r}
+tbl = table(observed = y, prediced = mu_mode_round)[1:15, 1:15]
+tbl
+```
+
+The inclusion of the negative binomial part did not help. We now predict much better the tails, but at the expense predicting higher values always.
+
+```{r}
+plot(tbl)
+```
+
 [Back to Index](#TOC)
 
 ----
 
-### Exercise 10
+### Exercise 11
 *We are throwing away a lot of information by not using the censored data. Come up with a strategy, and write down how you would alter your model/sampler. Bonus points for actually implementing it in STAN (hint: look up the section on censored data in the STAN manual)*
 
   
