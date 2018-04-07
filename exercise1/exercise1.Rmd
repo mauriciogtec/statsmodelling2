@@ -12,12 +12,13 @@ $$
 \DeclareMathOperator{\Wish}{Wishart}
 \DeclareMathOperator{\tr}{tr}
 $$
+[Return to main Index](https://github.com/mauriciogtec/statsmodelling2)
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(message = FALSE, warning = FALSE)
 ```
 
-# Section one: Preliminaries
+# Section 1: Preliminaries
 
 ## Exchangeability and de Finetti's theorem
 

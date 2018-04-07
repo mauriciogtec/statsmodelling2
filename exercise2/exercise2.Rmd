@@ -17,8 +17,9 @@ $$
 knitr::opts_chunk$set(message = FALSE, warning = FALSE)
 ```
 
+[Return to main Index](https://github.com/mauriciogtec/statsmodelling2)
 
-# Section 2
+# Section 2: Bayesian inference Gaussian modelS
 
 ## Bayesian inference in a simple Gaussian model
 

@@ -14,6 +14,8 @@ $$
 \DeclareMathOperator{\Po}{Poisson}
 $$
 
+[Return to main Index](https://github.com/mauriciogtec/statsmodelling2)
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(message = FALSE, warning = FALSE)
 ```
