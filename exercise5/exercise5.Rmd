@@ -1,0 +1,259 @@
+---
+title: 'Statistical Modelling II'
+author: 'Mauricio Garcia Tec'
+output: 
+  html_notebook: 
+    toc: yes
+---
+
+$$
+\DeclareMathOperator{\N}{N}
+\DeclareMathOperator{\Gam}{Gamma}
+\DeclareMathOperator{\Wish}{Wishart}
+\DeclareMathOperator{\tr}{tr}
+\DeclareMathOperator{\Po}{Poisson}
+\DeclareMathOperator{\Prob}{P}
+$$
+
+[Return to main Index](https://github.com/mauriciogtec/statsmodelling2)
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message = FALSE, warning = FALSE)
+```
+
+
+# Section 5: Mixture models
+
+
+So far, we've assumed that our data are conditionally exchangeable given their covariates. In other words, for every unique set of covariates there exists a set of parameters, conditioned on which, the data with those covariates are i.i.d. We used various distributions over functions to learn a distribution over these parameters, for all covariate settings.
+
+A common setting was when our data was normally distributed, with mean $\beta^Tx_i$ and variance $\sigma^2$. If we did not have the covariate values $x_i$, our data would no longer be normally distributed.
+
+### Exercise 1
+
+*Download the dataset restaurants.csv. This contains profit information for restaurants, based on seating capacity and whether they are open for dinner. Run a Bayesian regression of Profit vs SeatingCapacity and a dummy for DinnerService (you can reuse code from 2.12) (I'd suggest whitening Profit, it will make later prior specification easier). Do the residuals look normal? (e.g.\ plot histograms, qq plots). Now, let's just look at the raw Profit data: Does it look normal?*
+
+
+*Solution*. First we read the data.
+
+```{r}
+library(tidyverse)
+library(rstan)
+```
+
+```{r}
+resto <- read_csv("./restaurants.csv")[ ,-1]
+head(resto)
+```
+
+```{r}
+dim(resto)
+```
+
+We'll use stan for our Bayesian linear regression.
+
+```cpp
+// Stan model 1 for problem 1
+data {
+  // meta
+  int<lower=1> N; // nobs
+  // data
+  vector[N] x; // feature
+  vector[N] y; // response
+  // prior
+  real<lower=0> a0; // omega ~ Gamma(a0, shape = b0) !
+  real<lower=0> b0;
+  real mu0; // beta ~ N(mu0, (kappa0*omega)^{-1})
+  real<lower=0> kappa0; 
+}
+parameters {
+  real alpha; // intercept
+  real beta; // lin coefs
+  real<lower=0> omega; // precision
+}
+transformed parameters {
+  real<lower=0> sigma; // standard dev
+  vector[N] yhat; // linpred
+  sigma = pow(omega, -0.5);
+  yhat = alpha + x * beta;
+}
+model {
+  // prior
+  // alpha ~ 1; it's assumed
+  omega ~ gamma(a0, b0);
+  beta ~ normal(mu0, sigma / kappa0);
+  // likelihood
+  y ~ normal(yhat, sigma);
+}
+generated quantities {
+  vector[N] residuals;
+  residuals = y - yhat;
+}
+```
+
+```{r}
+stan1 <- stan_model(file = "./stan1.stan")
+```
+
+```{r}
+resto <- resto %>% 
+  mutate(SeatingCapacity = as.numeric(SeatingCapacity)) %>% 
+  mutate(profit_scaled = as.numeric(scale(Profit, scale = TRUE, center = FALSE)))
+x <- resto %>% 
+  pull(SeatingCapacity) 
+y <- resto %>% 
+  pull(profit_scaled)
+```
+
+```{r}
+standat <- list(
+  N = nrow(resto),
+  x = x,
+  y = y,
+  a0 = 1.,
+  b0 = 0.01,
+  mu0 = 0.,
+  kappa0 = 1.)
+```
+
+```{r}
+fit1 <- sampling(
+  stan1, 
+  data = standat,
+  iter = 500,
+  chains = 2,
+  cores = 2)
+```
+
+```{r}
+summary(fit1)$summary %>% 
+  as.data.frame() %>% 
+  head(4)
+```
+
+```{r}
+residuals <- rstan::extract(fit1, "residuals")$residuals
+```
+
+```{r}
+all_residuals <- as.numeric(residuals)
+hist(all_residuals, breaks = 50)
+```
+
+That's it! We see a bimodal shape on the residuals. Let's see more evidence.
+
+```{r}
+qqnorm(all_residuals)
+```
+
+Again, not normal! 
+
+[Back to Index](#TOC)
+
+----
+
+Let's assume we're in the situation where we don't know any of these covariate values. For now, let's ignore the continuous-valued covariate (SeatingCapacity), and try to infer the categorical covariate. Let's say we know that half our restaurants are open for dinner. We could assume that each restaurant is associated with a \textit{latent} indicator variable $Z_i$, that assigns them to one of two groups, so that
+
+$$Z_i \sim \mbox{Bernoulli}(\pi)$$
+
+As in the regression setting, conditioned on the latent variable, we will assume that the observed profits are i.i.d.\ normal. Again, as in the basic regression setting, we will assume the variances of the two normals are the same, but the means are different, i.e.
+
+$$X_i|Z_i=z \sim \mbox{Normal}(\mu_{z}, \sigma^2).$$
+
+If we marginalize over these binary indicators, our observations are assumed to be distributed according to a mixture of two Gaussians:
+
+$$X_i \sim 0.5N(\mu_1,\sigma_1^2) + 0.5(\mu_2,\sigma_2^2)$$
+
+We can then look at the posterior distribution over each indicator variable, conditioned on the class probabilities and parameters:
+
+$$\begin{aligned}\Prob(Z_i = z|X_i, \pi, \mu_1,\sigma^2) \propto & \Prob(Z_i=z|\pi)p(X_i|\mu_z,\sigma^2)\\
+  \mbox{so, }\qquad \Prob(Z_i=1|X_i, \pi, \mu_1,\sigma^2) \propto & \pi p(X_i|\mu_1,\sigma^2)\\
+  \Prob(Z_i=0|X_i, \pi, \mu_1,\sigma^2) \propto & \Prob(Z_i=0|\pi)p(X_0|\mu_z,\sigma^2)
+\end{aligned}$$
+
+Conditioned on the $Z_i$, we can update the means of the Gaussians using conjugacy.
+
+Note that we are not guaranteed to find latent clusters that correspond to the covariate we were expecting! If there is a more parsimonious partitioning of the data, then the posterior will tend to favor that partitioning.
+
+### Exercise 2
+
+*Let's assume (as is the case if our latent variables correspond to the actual DinnerService covariate) that the class proportions are roughly equal, and fix $\pi=0.5$. Using the conditional distributions $P(Z_i|X_i,\pi,\mu_1,\mu_2,\sigma^2)$ and $p(\mu_k|\{X_i:Z_i=k\}, \theta)$, where $\theta$ are appropriate (shared) prior parameters for $\mu_k$, implement a Gibbs sampler that samples the means and the latent indicator variables. I'd suggest using the parameters of the initial regression to pick your hyperparameters. Compare the clustering obtained with the ``true'' clustering due to the DinnerService variable.*
+
+*Solution*. In this problem we want to estimate the density of Profits, which shows a slightly multimodal behaviour.
+
+```{r}
+hist(resto$profit_scaled, breaks = 40)
+```
+
+
+The Gibbs sampler is very easy in this case because the weights are fixed. We only need to add the sampling step.
+
+```{r}
+gibbs2 <- function(nsim, y, prior) {
+  # meta
+  n <- length(y)
+  
+  # parameters
+  mu <- matrix(0, nsim + 1, 2)
+  omega <- numeric(nsim + 1)
+  sigma <- numeric(nsim + 1)
+  latent <- matrix(0, nsim + 1, n)
+  
+  # initialise
+  omega[1] <- prior$a0 / prior$b0 # beta is rate here!
+  sigma[1] <- 1 / omega[1] # std.dev
+  mu[1, ] <- prior$mu0 + c(-sigma[1], sigma[1]) # sensible values for mu
+  for (i in 1:n) {
+    wts <- 0.5 * map_dbl(mu[1, ], ~ dnorm(y[i], mean = .x, sigma[1]))
+    latent[1, i] <- sample(2, 1, prob = wts) # allocate ever individual
+  }
+  
+  # constant quantities
+  an <- 2*prior$a0 + 2*(n -1) / 2
+  
+  # sampler
+  for (k in 1:(nsim - 1)) {
+    # counts and means per component
+    nj <- map_int(1:2, ~ sum(latent[k, ] == .))
+    meanj <- map_dbl(1:2, ~ ifelse(nj[.] > 0, mean(y[latent[k, ] == .]), 0))
+    # posterior parameters
+    kappanj <- map_dbl(1:2, ~ nj[.]  + prior$kappa0, 0)  
+    munj <- map_dbl(1:2, ~ (nj[.] * meanj[.] + prior$kappa0 * prior$mu0[.]) / kappanj[.])
+    bn <- prior$b0 + 0.5 * (sum((y - munj[latent[k, ]])^2) + prior$kappa0 * sum(munj - prior$mu0)^2)
+    
+    
+    # sample gamma  
+    omega[k + 1] <- rgamma(1, an, bn)
+    sigma[k + 1] <-  1 / sqrt(omega[k + 1])
+    
+    # sample the means
+    mu[k + 1, ] <-  map_dbl(1:2, ~ rnorm(1, munj[.], sigma[k + 1]))
+    
+    # allocate again
+    for (i in 1:n) {
+      wts <- 0.5 * map_dbl(mu[k + 1, ], ~ dnorm(y[i], ., sigma[k + 1]))
+      latent[k + 1, i] <- sample(2, 1, prob = wts)
+    }
+  }
+  
+  list(mu = mu, omega = omega, sigma = sigma, latent = latent)
+}
+```
+
+```{r}
+nsim <- 100
+prior <- list(mu0 = c(0.6, 0.6), a0 = 1, b0 = 1, kappa0 = 1)
+
+sim2 <- gibbs2(nsim, y, prior)
+```
+
+```{r}
+gridy <- seq(0.3, 1.7, .1)
+hist(y, breaks= 40, prob = TRUE)
+for (k in 1:nsim) {
+  dens <- dnorm(gridy, 0.5 * sim$mu[k, 1], mu$)
+  lines()
+}
+```
+
+---
