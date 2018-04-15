@@ -52,7 +52,7 @@ dim(resto)
 
 We'll use stan for our Bayesian linear regression.
 
-```cpp
+```{stan, eval=FALSE}
 // Stan model 1 for problem 1
 data {
   // meta
@@ -94,6 +94,7 @@ generated quantities {
 ```{r}
 stan1 <- stan_model(file = "./stan1.stan")
 ```
+
 
 ```{r}
 resto <- resto %>% 
@@ -143,7 +144,7 @@ hist(all_residuals, breaks = 50)
 That's it! We see a bimodal shape on the residuals. Let's see more evidence.
 
 ```{r}
-qqnorm(all_residuals)
+qqnorm(all_residuals, col = "gray", border = "white")
 ```
 
 Again, not normal! 
@@ -182,7 +183,7 @@ Note that we are not guaranteed to find latent clusters that correspond to the c
 *Solution*. In this problem we want to estimate the density of Profits, which shows a slightly multimodal behaviour.
 
 ```{r}
-hist(resto$profit_scaled, breaks = 40)
+hist(y, breaks = 40, col = "gray", border = "white")
 ```
 
 
@@ -201,33 +202,34 @@ gibbs2 <- function(nsim, y, prior) {
   
   # initialise
   omega[1] <- prior$a0 / prior$b0 # beta is rate here!
-  sigma[1] <- 1 / omega[1] # std.dev
-  mu[1, ] <- prior$mu0 + c(-sigma[1], sigma[1]) # sensible values for mu
+  sigma[1] <- 1 / sqrt(omega[1]) # std.dev
+  mu[1, ] <- prior$mu0 # sensible values for mu
   for (i in 1:n) {
-    wts <- 0.5 * map_dbl(mu[1, ], ~ dnorm(y[i], mean = .x, sigma[1]))
+    wts <- 0.5 * map_dbl(mu[1, ], ~ dnorm(y[i], ., sigma[1]))
     latent[1, i] <- sample(2, 1, prob = wts) # allocate ever individual
   }
   
   # constant quantities
-  an <- 2*prior$a0 + 2*(n -1) / 2
+  an <- 2*prior$a0 + (n - 1) / 2
   
   # sampler
-  for (k in 1:(nsim - 1)) {
+  for (k in 1:nsim) {
     # counts and means per component
     nj <- map_int(1:2, ~ sum(latent[k, ] == .))
     meanj <- map_dbl(1:2, ~ ifelse(nj[.] > 0, mean(y[latent[k, ] == .]), 0))
     # posterior parameters
-    kappanj <- map_dbl(1:2, ~ nj[.]  + prior$kappa0, 0)  
+    kappanj <- map_dbl(1:2, ~ nj[.]  + 2*prior$kappa0, 0)  
     munj <- map_dbl(1:2, ~ (nj[.] * meanj[.] + prior$kappa0 * prior$mu0[.]) / kappanj[.])
-    bn <- prior$b0 + 0.5 * (sum((y - munj[latent[k, ]])^2) + prior$kappa0 * sum(munj - prior$mu0)^2)
+    bn <- prior$b0 + 0.5 * (sum((y - munj[latent[k, ]])^2) + prior$kappa0 * sum((munj - prior$mu0)^2))
     
     
     # sample gamma  
-    omega[k + 1] <- rgamma(1, an, bn)
+    omega[k + 1] <- rgamma(1, an, rate = bn)
     sigma[k + 1] <-  1 / sqrt(omega[k + 1])
     
     # sample the means
-    mu[k + 1, ] <-  map_dbl(1:2, ~ rnorm(1, munj[.], sigma[k + 1]))
+    mu[k + 1, ] <-  map_dbl(1:2, ~
+      rnorm(1, munj[.], sigma[k + 1] / sqrt(kappanj[.]) ))
     
     # allocate again
     for (i in 1:n) {
@@ -236,24 +238,35 @@ gibbs2 <- function(nsim, y, prior) {
     }
   }
   
-  list(mu = mu, omega = omega, sigma = sigma, latent = latent)
+  list(mu = mu[-1, ], omega = omega[-1], 
+       sigma = sigma[-1], latent = latent[-1, ])
 }
 ```
 
 ```{r}
-nsim <- 100
-prior <- list(mu0 = c(0.6, 0.6), a0 = 1, b0 = 1, kappa0 = 1)
-
+nsim <- 25
+prior <- list(mu0 = c(0.3, 0.9), a0 = 0.1, b0 = .001, kappa0 = 0.1)
 sim2 <- gibbs2(nsim, y, prior)
 ```
 
 ```{r}
-gridy <- seq(0.3, 1.7, .1)
-hist(y, breaks= 40, prob = TRUE)
+grid_length <- 1000
+gridy <- seq(0.4, 1.6, length.out = grid_length)
+hist(y[resto$DinnerService == 0], breaks= 20, prob = TRUE, main = "",
+  col = alpha("blue", 0.1), border = "white", xlim = c(0.3, 1.7))
+hist(y[resto$DinnerService == 1], breaks= 20, prob = TRUE, add = TRUE,
+  col = alpha("red", 0.1), border = "white")
+hist(y, breaks= 40, prob = TRUE, add = TRUE,
+  col = alpha("black", 0.1))
+mean_dens <- numeric(grid_length)
 for (k in 1:nsim) {
-  dens <- dnorm(gridy, 0.5 * sim$mu[k, 1], mu$)
-  lines()
+  dens <- 0.5 * dnorm(gridy, sim2$mu[k, 1], sim2$sigma[k]) +
+    0.5 * dnorm(gridy, sim2$mu[k, 2], sim2$sigma[k])
+  mean_dens <- mean_dens + dens / nsim
+  lines(gridy, dens, col = alpha("black", 0.03), lw = 3)
 }
+lines(gridy, mean_dens, col = alpha("black", 0.8), lw = 2)
+lines(density(y), col = "green")
 ```
 
 ---
