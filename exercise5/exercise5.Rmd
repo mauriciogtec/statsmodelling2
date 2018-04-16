@@ -210,7 +210,7 @@ gibbs2 <- function(nsim, y, prior) {
   }
   
   # constant quantities
-  an <- 2*prior$a0 + (n - 1) / 2
+  an <- 2*prior$a0 + n / 2
   
   # sampler
   for (k in 1:nsim) {
@@ -221,7 +221,6 @@ gibbs2 <- function(nsim, y, prior) {
     kappanj <- map_dbl(1:2, ~ nj[.]  + 2*prior$kappa0, 0)  
     munj <- map_dbl(1:2, ~ (nj[.] * meanj[.] + prior$kappa0 * prior$mu0[.]) / kappanj[.])
     bn <- prior$b0 + 0.5 * (sum((y - munj[latent[k, ]])^2) + prior$kappa0 * sum((munj - prior$mu0)^2))
-    
     
     # sample gamma  
     omega[k + 1] <- rgamma(1, an, rate = bn)
@@ -244,7 +243,7 @@ gibbs2 <- function(nsim, y, prior) {
 ```
 
 ```{r}
-nsim <- 25
+nsim <- 100
 prior <- list(mu0 = c(0.3, 0.9), a0 = 0.1, b0 = .001, kappa0 = 0.1)
 sim2 <- gibbs2(nsim, y, prior)
 ```
@@ -252,8 +251,9 @@ sim2 <- gibbs2(nsim, y, prior)
 ```{r}
 grid_length <- 1000
 gridy <- seq(0.4, 1.6, length.out = grid_length)
-hist(y[resto$DinnerService == 0], breaks= 20, prob = TRUE, main = "",
-  col = alpha("blue", 0.1), border = "white", xlim = c(0.3, 1.7))
+hist(y[resto$DinnerService == 0], breaks= 20, prob = TRUE, 
+  col = alpha("blue", 0.1), border = "white", xlim = c(0.3, 1.7), xlab = "Price",
+  main = "Mixture density estimation")
 hist(y[resto$DinnerService == 1], breaks= 20, prob = TRUE, add = TRUE,
   col = alpha("red", 0.1), border = "white")
 hist(y, breaks= 40, prob = TRUE, add = TRUE,
@@ -266,7 +266,12 @@ for (k in 1:nsim) {
   lines(gridy, dens, col = alpha("black", 0.03), lw = 3)
 }
 lines(gridy, mean_dens, col = alpha("black", 0.8), lw = 2)
-lines(density(y), col = "green")
+lines(density(y), col = "magenta")
+legend("topright", c("price[service=0]", "price[service=1]", "price", "mixture density", "kde density"),
+  pch = 19,
+  col = c(alpha("blue", 0.4), alpha("red", 0.4), alpha("gray", 0.5), "black", "magenta"))
 ```
 
 ---
+
+d_M \propto 1
