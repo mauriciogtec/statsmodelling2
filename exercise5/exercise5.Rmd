@@ -206,11 +206,11 @@ gibbs2 <- function(nsim, y, prior) {
   mu[1, ] <- prior$mu0 # sensible values for mu
   for (i in 1:n) {
     wts <- 0.5 * map_dbl(mu[1, ], ~ dnorm(y[i], ., sigma[1]))
-    latent[1, i] <- sample(2, 1, prob = wts) # allocate ever individual
+    latent[1, i] <- sample(2, 1, prob = wts / sum(wts)) # allocate ever individual
   }
   
   # constant quantities
-  an <- 2*prior$a0 + n / 2
+  an <- prior$a0 + n/2 + 1 / 2
   
   # sampler
   for (k in 1:nsim) {
@@ -218,22 +218,22 @@ gibbs2 <- function(nsim, y, prior) {
     nj <- map_int(1:2, ~ sum(latent[k, ] == .))
     meanj <- map_dbl(1:2, ~ ifelse(nj[.] > 0, mean(y[latent[k, ] == .]), 0))
     # posterior parameters
-    kappanj <- map_dbl(1:2, ~ nj[.]  + 2*prior$kappa0, 0)  
-    munj <- map_dbl(1:2, ~ (nj[.] * meanj[.] + prior$kappa0 * prior$mu0[.]) / kappanj[.])
-    bn <- prior$b0 + 0.5 * (sum((y - munj[latent[k, ]])^2) + prior$kappa0 * sum((munj - prior$mu0)^2))
+    kappanj <- nj  + prior$kappa0 
+    munj <- (nj * meanj + prior$kappa0 * prior$mu0) / kappanj
+    prior_bnterm <- prior$kappa0 * nj / kappanj
+    bn <- prior$b0 + 0.5*sum((y - meanj[latent[k, ]])^2) + 0.5*sum(prior_bnterm * (meanj - prior$mu0)^2)
     
     # sample gamma  
-    omega[k + 1] <- rgamma(1, an, rate = bn)
+    omega[k + 1] <- rgamma(1, an, bn)
     sigma[k + 1] <-  1 / sqrt(omega[k + 1])
     
     # sample the means
     mu[k + 1, ] <-  map_dbl(1:2, ~
-      rnorm(1, munj[.], sigma[k + 1] / sqrt(kappanj[.]) ))
-    
+      rnorm(1, munj[.], sigma[k + 1] / sqrt(kappanj[.])))
     # allocate again
     for (i in 1:n) {
       wts <- 0.5 * map_dbl(mu[k + 1, ], ~ dnorm(y[i], ., sigma[k + 1]))
-      latent[k + 1, i] <- sample(2, 1, prob = wts)
+      latent[k + 1, i] <- sample(2, 1, prob = wts / sum(wts))
     }
   }
   
@@ -244,13 +244,13 @@ gibbs2 <- function(nsim, y, prior) {
 
 ```{r}
 nsim <- 100
-prior <- list(mu0 = c(0.3, 0.9), a0 = 0.1, b0 = .001, kappa0 = 0.1)
+prior <- list(mu0 = c(0.3, 1.2), a0 = 1, b0 = .01, kappa0 = 1.)
 sim2 <- gibbs2(nsim, y, prior)
 ```
 
 ```{r}
 {
-grid_length <- 1000
+grid_length <- 100
 gridy <- seq(0.4, 1.6, length.out = grid_length)
 hist(y[resto$DinnerService == 0], breaks= 20, prob = TRUE, 
   col = alpha("blue", 0.1), border = "white", xlim = c(0.3, 1.7), xlab = "Price",
