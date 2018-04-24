@@ -24,6 +24,7 @@ knitr::opts_chunk$set(message = FALSE, warning = FALSE)
 
 # Section 5: Mixture models
 
+## Mixture Models
 
 So far, we've assumed that our data are conditionally exchangeable given their covariates. In other words, for every unique set of covariates there exists a set of parameters, conditioned on which, the data with those covariates are i.i.d. We used various distributions over functions to learn a distribution over these parameters, for all covariate settings.
 
@@ -220,9 +221,9 @@ gibbs2 <- function(nsim, y, prior) {
     # posterior parameters
     kappanj <- nj  + prior$kappa0 
     munj <- (nj * meanj + prior$kappa0 * prior$mu0) / kappanj
-    prior_bnterm <- prior$kappa0 * nj / kappanj
-    bn <- prior$b0 + 0.5*sum((y - meanj[latent[k, ]])^2) + 0.5*sum(prior_bnterm * (meanj - prior$mu0)^2)
-    
+    bn <- prior$b0 + 0.5*sum((y - meanj[latent[k, ]])^2) +
+      0.5*sum(prior$kappa0 * nj / kappanj * (meanj - prior$mu0)^2)
+  
     # sample gamma  
     omega[k + 1] <- rgamma(1, an, bn)
     sigma[k + 1] <-  1 / sqrt(omega[k + 1])
@@ -275,4 +276,352 @@ legend("topright", c("price[service=0]", "price[service=1]", "price", "posterior
 ```
 
 ---
+
+
+OK, let's now assume we don't know $\pi$, and that the two classes have different values of $\sigma^2$. Let's put a Beta$(\alpha,\beta)$ prior on $\pi$, since it is conjugate to the Bernoulli distribution. 
+
+
+### Exercise 3
+
+*Let's assume we want to integrate out $\pi$. What is the conditional distribution $P(z_i|z_{\neg i}, X_i,\mu_1,\mu_2,\sigma_1,\sigma_2,\alpha,\beta)$, where $Z_{\neg i}$ means all the values of $z$ except $z_i$?*
+
+*Solution*. Write $\theta = (\alpha,\beta)$, $\mu=(\mu_1,\mu_2)$. Assume aprior
+$$
+\pi \sim \mathrm{Beta}(\nu_1,\nu_2)
+$$
+First we note that
+$$
+p(z_i\mid z_{\neg i}, x, \mu,\sigma^2,\theta) \propto N(x_i \mid \mu_{z_i},\sigma^2)p(z_i\mid z_{\neg i},\mu,\sigma^2,\theta)
+$$
+For the second term will do the following
+$$
+\begin{aligned}
+p(z_i = 1\mid z_{\neg i},\mu,\sigma^2,\theta) & = 
+\int p(Z_i = 1\mid \pi, z_{\neg i},\mu,\sigma^2,\theta)p(\pi\mid z_{\neg i},\mu, \sigma^2, \theta) d\pi \\
+& = \int \pi p(\pi\mid z_{\neg i},\mu, \sigma^2, \theta) d\pi \\
+& \propto \int \pi p(z_{\neg i} \mid \pi ,\mu, \sigma^2, \theta) p(\pi)d\pi \\
+& \propto \int \pi \mathrm{Dirichlet}(\pi \mid n_{1,\neg i} + \nu_1, n_{2,\neg i} +\nu_2)d\pi \\
+& \propto E \left[ \mathrm{Dirichlet}(n_{1,\neg i} + \nu_1, n_{2,\neg i} +\nu_2) \right] \\
+& = \frac{n_{1,\neg i} + \nu_1}{n - 1+ \nu_1 + \nu_2}.
+\end{aligned}
+$$
+where $n_{k,\neg i} = \sum_{j \neq i}1(Z_j=k)$ for $k=1,2$. Note that $n = n_{1,\neg i} + n_{2,\neg i} + 1$ is the size  $X$. Similarly,
+$$
+p(z_i = 2\mid z_{\neg i},\mu,\sigma^2,\theta) = \frac{n_{2,\neg i} + \nu_2}{n - 1+ \nu_1 + \nu_2}.
+$$
+We can write this succintly as
+$$
+p(n_i \mid n_{\neg i},\mu,\sigma^2,\theta) = \frac{n_{z_i,\neg i} + \nu_{z_i}}{n - 1+ \nu_1 + \nu_2}.
+$$
+So as a conclusion we have
+$$
+p(z_i = k\mid z_{\neg i},x_i, \mu,\sigma^2,\theta) \propto N(x_i \mid \mu_{k},\sigma^2)\frac{n_{k,\neg i} + \nu_{k}}{n - 1+ \nu_1 + \nu_2} \quad \text{ for } \quad k=1,2
+$$
+
+[Back to Index](#TOC)
+
+----
+
+
+### Exercise 4
+
+*How about if we want to integrate out all of the continuous variables? What is the conditional distribution $P(Z_i|Z_{\neg i}, X, \theta)$, where $\theta$ is the set of all hyperparameters?*
+
+*Solution*. From the expression of exercise 3 it's evident that since the density splits, we can ignore the terms corresponding to $\mu$ and $\sigma^2$.
+
+$$
+\begin{aligned}
+p(z_i \mid z_{\neg i}, X, \theta) &= \int\int p(z_i \mid z_{\neg i}, X, \mu,\sigma^2,\theta) d\mu d\sigma^2\\ 
+& \propto \frac{n_{z_i,\neg i} + \nu_{z_i}}{n - 1+ \nu_1 + \nu_2}.
+\end{aligned}
+$$
+
+[Back to Index](#TOC)
+
+----
+
+### Exercise 5
+
+*Implement a Gibbs sampler for this new model where we learn the cluster proportions. You can either implement one of the variants in the previous two exercises, or the fully uncollapsed model where we sample $Z$, $\pi$, $\mu_1$, $\mu_2$, $\sigma^2_1$ and $\sigma^2_2$.*
+
+*Solution*. I'll implement the sampler from Exercise 3 since it's just an adaptation from Exercise 2. All we need to do is to change the resampling scheme of the $z$ at the end of the inner loop according to the expression found at Exercise 3.
+
+```{r}
+gibbs5 <- function(nsim, y, prior) {
+  # meta
+  n <- length(y)
+  
+  # parameters
+  mu <- matrix(0, nsim + 1, 2)
+  omega <- numeric(nsim + 1)
+  sigma <- numeric(nsim + 1)
+  latent <- matrix(0, nsim + 1, n)
+  # transformed parameter
+  weights <- matrix(0, nsim + 1, 2)
+  
+  # initialise
+  omega[1] <- prior$a0 / prior$b0 # beta is rate here!
+  sigma[1] <- 1 / sqrt(omega[1]) # std.dev
+  mu[1, ] <- prior$mu0 # sensible values for mu
+  for (i in 1:n) { # smart starting value according to prior
+    latent[1, i] <- sample(2, 1, prob = prior$nu / sum(prior$nu)) # allocate ever individual
+  }
+  nj <- map_int(1:2, ~ sum(latent[1, ] == .))
+  weights[1, ] <- prior$nu / sum(prior$nu)
+  
+  # constant quantities
+  an <- prior$a0 + n/2 + 1 / 2
+  
+  # sampler
+  for (k in 1:nsim) {
+    # counts and means per component
+    meanj <- map_dbl(1:2, ~ ifelse(nj[.] > 0, mean(y[latent[k, ] == .]), 0))
+    # posterior parameters
+    kappanj <- nj  + prior$kappa0 
+    munj <- (nj * meanj + prior$kappa0 * prior$mu0) / kappanj
+    bn <- prior$b0 + 0.5*sum((y - meanj[latent[k, ]])^2) +
+      0.5*sum(prior$kappa0 * nj / kappanj * (meanj - prior$mu0)^2)
+  
+    # sample gamma  
+    omega[k + 1] <- rgamma(1, an, bn)
+    sigma[k + 1] <-  1 / sqrt(omega[k + 1])
+    
+    # sample the means
+    mu[k + 1, ] <-  map_dbl(1:2, ~
+      rnorm(1, munj[.], sigma[k + 1] / sqrt(kappanj[.])))
+    # allocate again
+    latent[k + 1, i] <- latent[k, i] # make a copy
+    for (i in 1:n) { # smart starting value according to prior
+      cnts <- nj + prior$nu - as.integer(latent[k + 1, i] == 1:2)
+      wts <- cnts * map_dbl(mu[k + 1, ], ~ dnorm(y[i], ., sigma[k + 1]))
+      latent[k+ 1, i] <- sample(2, 1, prob = wts / sum(wts)) # allocate ever individual
+    }
+    nj <- map_int(1:2, ~ sum(latent[k + 1, ] == .))
+    weights[k + 1, ] <- (nj + prior$nu) / sum(nj + prior$nu)
+  }
+  
+  list(mu = mu[-1, ], omega = omega[-1], 
+       sigma = sigma[-1], latent = latent[-1, ], weights = weights[-1, ])
+}
+```
+
+```{r}
+nsim <- 500
+prior <- list(mu0 = c(0.3, 1.2), a0 = 1, b0 = .01, kappa0 = 1., nu = c(1, 1))
+sim5 <- gibbs5(nsim, y, prior)
+```
+
+We can graph the result as in Exercise 2 to see the results.
+
+```{r}
+{
+warmup <- 250
+grid_length <- 100
+gridy <- seq(0.4, 1.6, length.out = grid_length)
+hist(y[resto$DinnerService == 0], breaks= 20, prob = TRUE, 
+  col = alpha("blue", 0.1), border = "white", xlim = c(0.3, 1.7), xlab = "Price",
+  main = "Problem 5: Normal Mixture with Collapsed Sampler")
+hist(y[resto$DinnerService == 1], breaks= 20, prob = TRUE, add = TRUE,
+  col = alpha("red", 0.1), border = "white")
+hist(y, breaks= 40, prob = TRUE, add = TRUE,
+  col = alpha("black", 0.1))
+mean_dens <- numeric(grid_length)
+for (k in (warmup + 1):nsim) {
+  dens <- sim5$weights[k, 1] * dnorm(gridy, sim5$mu[k, 1], sim5$sigma[k]) +
+   sim5$weights[k, 2] * dnorm(gridy, sim5$mu[k, 2], sim5$sigma[k])
+  mean_dens <- mean_dens + dens / (nsim - warmup)
+  lines(gridy, dens, col = alpha("black", 0.02), lw = 3)
+}
+lines(gridy, mean_dens, col = alpha("black", 0.8), lw = 2)
+lines(density(y), col = "magenta")
+legend("topright", c("price[service=0]", "price[service=1]", "price", "posterior density", "kde estimate"),
+  pch = c(15, 15, 15, NA, NA), lt = c(NA, NA, NA, 1, 1, 1),
+  col = c(alpha("blue", 0.4), alpha("red", 0.4), alpha("gray", 0.5), "black", "magenta"))
+}
+```
+
+[Back to Index](#TOC)
+
+
+----
+
+
+Let's now consider the case where we have more than two classes. Here, we need to replace our Bernoulli distribution with a multinomial parametrized by some probability vector $\pi$, so that:
+
+$$P(Z_i = k) = \pi_k$$
+
+  Much as the multinomial is the multivariate generalization of the binomial distribution, the Dirichlet($\alpha_1,\dots,\alpha_K$) distribution, which has pdf
+  $$\frac{\Gamma(\sum_k \alpha_k)}{\prod_k \Gamma(\alpha_k)} \prod_{k=1}^K \pi_k^{\alpha_k},$$
+  is the multivariate generalization of the beta distribution. Here, $\alpha$ is a $D$-dimensional vector where $\alpha_k>0$ and $\sum_k\alpha_k\geq 1$. The expectation of a Dirichlet distribution is given by the normalized parameter vector, $E[\pi] = \frac{(\alpha_1,\dots,\alpha_K)}{\sum_k\alpha_k}$. The absolute magnitude of the parameter acts like an inverse variance: the smaller its values, the further a given sample is from the expected value. Figure below shows the pdf of three Dirichlet distributions represented on the 3-simplex, with samples from those distributions
+  
+![](images/dirichlet.png)
+
+
+### Exercise 6
+
+*Show that the Dirichlet is conjugate to the multinomial, and derive the posterior predictive distribution
+  $$P(Z_{n+1}|Z_{1:n}) = \int_{\mathcal{M}} P(Z_{n+1}|\pi)p(\pi \mid Z_{1:n}) d\pi$$
+  You may find it helpful to note that, if $\pi\sim \mbox{Dirichlet}(\alpha_1,\dots,\alpha_K)$, then $E[\pi] = \frac{(\alpha_1,\dots,\alpha_K)}{\sum_k\alpha_k}$.*
+
+*Solution*. The key is to write the distribution the multinomial distribution as
+$$
+\mathrm{Multinomial}(Z\mid \pi_1, ..., \pi_K) \propto \pi_1^{1(Z=1)} \cdots \pi_K^{1(Z = K)}
+$$
+Then
+$$
+\begin{aligned}
+p(\pi \mid Z) &\propto p(\pi)\prod_ip(Z_i \mid \pi) \\
+& \propto \pi_1^{\alpha_1 - 1} \cdots \pi_K^{\alpha_K - 1} \prod_i \pi_1^{1(Z_i=1)}\cdots \pi_K^{1(Z_i=K)} \\
+& \propto \pi_1^{\alpha_1 -1 + N_1} \cdots \pi_K^{\alpha_K -1 + N_k} \\
+& \propto \mathrm{Dirichlet}\left(\pi \mid \alpha_1 + N_1 -1, ...,  N_K + \alpha_K -1\right) 
+\end{aligned}
+$$
+where $N_j = \sum_i 1(Z_i = j)$. This also helps us to interpret the initial hyperparameters $\alpha_j$ of the Dirichlet Distribution as pseudo-counts.
+
+The key for the following is to observe the following simple identity
+$$
+P(Z \mid \pi) = \pi
+$$
+Then the posterior predictive is
+$$
+\begin{aligned}
+P(Z_{n+1} \mid Z_{1:n}) & = \int_{\mathcal{M}}  P(Z_{n+1} \mid \pi)p(\pi \mid Z_{1:n}) d\pi \\
+& \propto  \int_{\mathcal{M}}  \pi p(\pi \mid Z_{1:n})  d\pi \\
+& =  E\left[\mathrm{Dirichlet}\left(\pi \mid \alpha_1 + N_1 -1, ...,  N_K + \alpha_K -1\right) \right] \\
+& \propto  \mathrm{Multinomial}\left(\left(\frac{\alpha_j + N_j}{\sum_j(\alpha_j + N_j)}\right)_{j=1}^K\right). \\
+\end{aligned}
+$$
+
+
+[Back to Index](#TOC)
+
+
+----
+
+
+### Exercise 7
+
+*Modify your previous Gibbs sampler to allow multiple classes, and two-dimensional data. Generate some data according to a Dirichlet mixture of 5 Gaussians in $\mathbb{R}^2$, and test your code on it.*
+
+Here's the modified Gibbs sampler. Tiny modifications and using a Dirichlet. As a nice bonus I'm adding a process bar.
+
+```{r}
+library(tidyverse)
+library(progress)
+```
+
+
+```{r}
+gibbs7 <- function(nsim, y, prior) {
+  # meta
+  n <- length(y)
+  K <- length(prior$mu0)
+  
+  # parameters
+  mu <- matrix(0, nsim + 1, K)
+  omega <- numeric(nsim + 1)
+  sigma <- numeric(nsim + 1)
+  latent <- matrix(0, nsim + 1, n)
+  # transformed parameter
+  weights <- matrix(0, nsim + 1, K)
+  
+  # initialise
+  omega[1] <- prior$a0 / prior$b0 # beta is rate here!
+  sigma[1] <- 1 / sqrt(omega[1]) # std.dev
+  mu[1, ] <- prior$mu0 # sensible values for mu
+  for (i in 1:n) { # smart starting value according to prior
+    latent[1, i] <- sample(K, 1, prob = prior$nu / sum(prior$nu)) # allocate ever individual
+  }
+  nj <- map_int(1:K, ~ sum(latent[1, ] == .))
+  weights[1, ] <- prior$nu / sum(prior$nu)
+  
+  # constant quantities
+  an <- prior$a0 + (n - 1)/2 + K / 2
+  
+  # sampler
+  pb <- progress_bar$new(total = nsim)
+  for (k in 1:nsim) {
+    # counts and means per component
+    meanj <- map_dbl(1:K, ~ ifelse(nj[.] > 0, mean(y[latent[k, ] == .]), 0))
+    # posterior parameters
+    kappanj <- nj  + prior$kappa0 
+    munj <- (nj * meanj + prior$kappa0 * prior$mu0) / kappanj
+    bn <- prior$b0 + 0.5*sum((y - meanj[latent[k, ]])^2) +
+      0.5*sum(prior$kappa0 * nj / kappanj * (meanj - prior$mu0)^2)
+  
+    # sample gamma  
+    omega[k + 1] <- rgamma(1, an, bn)
+    sigma[k + 1] <-  1 / sqrt(omega[k + 1])
+    
+    # sample the means
+    mu[k + 1, ] <-  map_dbl(1:K, ~
+      rnorm(1, munj[.], sigma[k + 1] / sqrt(kappanj[.])))
+    # allocate again
+    latent[k + 1, i] <- latent[k, i] # make a copy
+    for (i in 1:n) { # smart starting value according to prior
+      cnts <- nj + prior$nu - as.integer(latent[k + 1, i] == 1:K)
+      wts <- cnts * map_dbl(mu[k + 1, ], ~ dnorm(y[i], ., sigma[k + 1]))
+      latent[k+ 1, i] <- sample(K, 1, prob = wts / sum(wts)) # allocate ever individual
+    }
+    nj <- map_int(1:K, ~ sum(latent[k + 1, ] == .))
+    weights[k + 1, ] <- (nj + prior$nu) / sum(nj + prior$nu)
+    pb$tick()
+  }
+  
+  list(mu = mu[-1, ], omega = omega[-1], 
+       sigma = sigma[-1], latent = latent[-1, ], weights = weights[-1, ])
+}
+```
+
+
+First let's generate data
+
+```{r}
+K <- 5
+n <- 1000
+w_true <- c(0.3, 0.1, 0.2, 0.3, 0.1)
+mu_true <- seq(-2.5, 2.5, length.out = 5)
+sigma_true <- 0.35
+simdata <- map_dbl(1:n, ~{j = sample(K, 1, prob = w_true); rnorm(1, mu_true[j], sigma_true)})
+```
+
+And run the sampler
+```{r}
+nsim <- 1000
+set.seed(110104)
+prior <- list(mu0 = rnorm(K), a0 = 1, b0 = .01, kappa0 = 1., nu = rep(1, K))
+sim7 <- gibbs7(nsim, simdata, prior)
+```
+
+We can graph the results
+
+```{r}
+{
+warmup <- 500
+grid_length <- 100
+gridy <- seq(-4.5, 4.5, length.out = grid_length)
+hist(simdata, breaks = 50, prob = TRUE, xlim = c(-4.5, 4.5),
+  col = alpha("blue", 0.2), border = "white", xlab = "simulated data",
+  main = "Problem 7: Normal Mixture with K=5 clusters (simulated data)")
+mean_dens <- numeric(grid_length)
+for (k in (warmup + 1):nsim) {
+  dens <- numeric(length(gridy))
+  for (i in 1:length(gridy)) {
+    dens[i] <- sum(sim7$weights[k, ] * map_dbl(1:K, ~dnorm(gridy[i], sim7$mu[k, .], sim7$sigma[k])))
+  }
+  mean_dens <- mean_dens + dens / (nsim - warmup)
+  lines(gridy, dens, col = alpha("black", 0.005), lw = 3)
+}
+lines(gridy, mean_dens, col = alpha("black", 0.8), lw = 2)
+lines(density(simdata, bw = sigma_true / 2), col = "magenta")
+legend("topright", c("simdata", "posterior density", "kde estimate"),
+  pch = c(15, NA, NA), lt = c(NA,  1, 1),
+  col = c(alpha("blue", 0.4), "black", "magenta"))
+}
+```
+
+
+[Back to Index](#TOC)
+
+----
 
