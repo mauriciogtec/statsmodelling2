@@ -300,8 +300,8 @@ p(z_i = 1\mid z_{\neg i},\mu,\sigma^2,\theta) & =
 \int p(Z_i = 1\mid \pi, z_{\neg i},\mu,\sigma^2,\theta)p(\pi\mid z_{\neg i},\mu, \sigma^2, \theta) d\pi \\
 & = \int \pi p(\pi\mid z_{\neg i},\mu, \sigma^2, \theta) d\pi \\
 & \propto \int \pi p(z_{\neg i} \mid \pi ,\mu, \sigma^2, \theta) p(\pi)d\pi \\
-& \propto \int \pi \mathrm{Dirichlet}(\pi \mid n_{1,\neg i} + \nu_1, n_{2,\neg i} +\nu_2)d\pi \\
-& \propto E \left[ \mathrm{Dirichlet}(n_{1,\neg i} + \nu_1, n_{2,\neg i} +\nu_2) \right] \\
+& \propto \int \pi \mathrm{Beta}(\pi \mid n_{1,\neg i} + \nu_1, n_{2,\neg i} +\nu_2)d\pi \\
+& \propto E \left[ \mathrm{Beta}(n_{1,\neg i} + \nu_1, n_{2,\neg i} +\nu_2) \right] \\
 & = \frac{n_{1,\neg i} + \nu_1}{n - 1+ \nu_1 + \nu_2}.
 \end{aligned}
 $$
@@ -311,7 +311,7 @@ p(z_i = 2\mid z_{\neg i},\mu,\sigma^2,\theta) = \frac{n_{2,\neg i} + \nu_2}{n - 
 $$
 We can write this succintly as
 $$
-p(n_i \mid n_{\neg i},\mu,\sigma^2,\theta) = \frac{n_{z_i,\neg i} + \nu_{z_i}}{n - 1+ \nu_1 + \nu_2}.
+p(z_i \mid z_{\neg i},\mu,\sigma^2,\theta) = \frac{n_{z_i,\neg i} + \nu_{z_i}}{n - 1+ \nu_1 + \nu_2}.
 $$
 So as a conclusion we have
 $$
@@ -327,14 +327,85 @@ $$
 
 *How about if we want to integrate out all of the continuous variables? What is the conditional distribution $P(Z_i|Z_{\neg i}, X, \theta)$, where $\theta$ is the set of all hyperparameters?*
 
-*Solution*. From the expression of exercise 3 it's evident that since the density splits, we can ignore the terms corresponding to $\mu$ and $\sigma^2$.
+*Solution*. So far I have been working with a single parameter $\sigma$ for all clusters. The math will be a little simpler if we allow a different $\sigma_j$ for each cluster. It's not that harder in the other case, but it's also an opportunity for extending the model. To simplify denote the parameters as
+$$
+\eta = (\eta_1, ..., \eta_K) = ((\mu_1,\sigma^2_1), ...., (\mu_K,\sigma_K^2))
+$$
+with conugate independent priors
+$$
+\mu_j \sim N(\mu_{0,j}, \sigma_j^2 / \kappa_{0}) \quad \sigma_j^2 \sim \text{InvGamma}(a_0, b_0),
+$$
+ For the mixture model, there are weights $w_j$ and latent variables $z_i$ 
+such that
+$$
+p(x_i, z_i = j \mid w, \eta, \theta) = w_j N(x_i \mid \eta_j).
+$$
+with priors
+$$
+p(z_i = j \mid \pi) = w_j \quad \text{and} \quad \pi \sim \mathrm{Dirichlet}\left(\nu_1, ..., \nu_K\right).
+$$
+The hyperparameters are $\theta = (\kappa_0, a_0, b_0, \mu_0, \nu)$. For notational hygiene, I'll treat them as constants and not include them in the probability notations.
 
+Finally, as a convenient notation, denote 
+$$
+n^{\neg i}_j:=\sum_{l=1, l \neq i}^n 1(z_l = j)
+$$ 
+as the total counf of latent allocation to cluster $j$ excluding observation $i$. Evidently, $\sum_j  n^{\neg i}_j = n - 1$ where $n$ is the total number of observations. In a similar spirit, we'll denote 
+$$
+\bar{x}^{\neg i}_{j}:= \frac{1}{n^{\neg i}_j} \sum_{l=1, l \neq i}^n x_i 1(z_l = j)
+$$ 
+the mean of the observed data for all the points excluding $x_i$.
+
+Recall that as a result from the previous exercise we have that
+$$
+p(z_i = j \mid z_{\neg i},\eta) = \frac{\nu_j + n^{\neg i}_j}{\sum_k(\nu_k + n^{\neg i}_k)}.
+$$
+and therefore
+$$
+p(z_i = j \mid x_i, z_{\neg i},\eta) \propto N(x_i \mid \eta_j) \frac{\nu_j + n^{\neg i}_j}{\sum_k(\nu_k + n^{\neg i}_k)}.
+$$
+
+We now derive the expression required for the collapsed Gibbs sampler. Be mindful that $x$ denote the entire data, $x_i$ the i-th observation, and $x_{\neg i}$ the data removing the i-th observation. Also, we are being careful not to use the proportionality sign if the constant can't be taken outside the integral.
+
+An application of the lat of total probability followed by Bayes' theorem on the second term inside the integral (separating $x_i$ from $x$) yields
 $$
 \begin{aligned}
-p(z_i \mid z_{\neg i}, X, \theta) &= \int\int p(z_i \mid z_{\neg i}, X, \mu,\sigma^2,\theta) d\mu d\sigma^2\\ 
-& \propto \frac{n_{z_i,\neg i} + \nu_{z_i}}{n - 1+ \nu_1 + \nu_2}.
+p(z_i  \mid z_{\neg i}, x) &= \int p(z_i \mid z_{\neg i}, x, \eta) p(\eta \mid z_{\neg i}, x) d\eta \\
+& \propto \int p(z_i \mid z_{\neg i},x , \eta) p(x_i \mid z_i, x_{\neg i}, \eta)p(\eta\mid z_{\neg i}, x_{\neg i}) d\eta.
 \end{aligned}
 $$
+We now have the posterior for all the data excluding observation $i$ appearing as the right-term of the integrand. For the other two term we observe the identity (another application of Bayes' theorem separating $x_i$ from $x$ on the left-term)
+$$
+\begin{aligned}
+p(z_i \mid z_{\neg i}, x , \eta) p(x_i \mid \eta, z_i, x_{\neg i}) & = \frac{p(x_i \mid z, x_{\neg i}, \eta)p(z_i \mid z_{\neg i}, x_{\neg i}, \eta)}{p(x_i \mid z_i, x_{\neg i}, \eta)}p(x_i \mid z_i, x_{\neg i}, \eta) \\
+& = p(x_i \mid z, x_{\neg i}, \eta)p(z_i \mid z_{\neg i}, x_{\neg i}, \eta) \\
+& = p(x_i \mid z_i, \eta)p(z_i \mid z_{\neg i}, \eta) \\
+& = N(x_i \mid \eta_{z_i})\frac{\nu_j + n^{\neg i}_j}{\sum_k(\nu_k + n^{\neg i}_k)}
+\end{aligned}
+$$
+where the third equality holds because the $x_i$ are independent of the $x_{\neg i}$ and $z_{\neg i}$ given $\eta$; and similarly, $z_i$ is independent of $x_{\neg i}$ given $z_{\neg i}$ and $\eta$. Now plugging this back into the integral we get
+$$
+p(z_i  \mid z_{\neg i}, x) \propto (\nu_j + n^{\neg i}_j)\int N(x_i \mid \eta_{z_i}) p(\eta \mid z_{\neg i}, x_{\neg i}) d\eta
+$$
+Finally, our particular choice of priors makes the posterior of $\eta$ to split as 
+$$
+ p(\eta \mid z_{\neg i}, x_{\neg i}) = \prod_{j=1}^Kp(\eta_j \mid z_{\neg i}, x_{\neg i}).
+$$
+So we have
+$$
+(\nu_j + n^{\neg i}_j)\int N(x_i \mid \eta_{z_i}) p(\eta \mid z_{\neg i}, x_{\neg i}) d\eta = (\nu_j + n^{\neg i}_j)\int N(x_i \mid \eta_{z_i}) p(\eta_{z_i} \mid z_{\neg i}, x_{\neg i}) d\eta_{z_i},
+$$
+and this integral is a piece of cake, since we have computed this integral many times: it is the posterior predictive of a normal distribution, which we know it's a t-distribution.
+
+So putting all together we arrive to
+$$
+p(z_i  \mid z_{\neg i}, x) \propto (\nu_j + n^{\neg i}_j) \,\mathrm{tStudent}(x_i \mid \mu_{n,z_i}, b_j^{\neg i} / (\kappa_0 a^{\neg i}_j), 2a^{\neg i}_j )
+$$
+
+* $\mu_n = \frac{n_{j, -i}}{n_{j, -i} + \kappa_0}\bar{x}_{j, -i} + \frac{\kappa_0}{n_{j, -i} + \kappa_0}\mu_{0,j}$
+* $a_n = n_{j, -i} - (n - 1 - 1) / 2 + K / 2$
+* $b_n = \frac{1}{2}\sum_{z_k = j, k\neq i}(x_i - \bar{x}_{j, -i} )^2 + \frac{n_{j,-1}\kappa_0 }{n_{j,-1} + \kappa_0}(\bar{x}_{j, -1} - \mu_{0,j})^2$
+
 
 [Back to Index](#TOC)
 
@@ -389,9 +460,10 @@ gibbs5 <- function(nsim, y, prior) {
     # sample the means
     mu[k + 1, ] <-  map_dbl(1:2, ~
       rnorm(1, munj[.], sigma[k + 1] / sqrt(kappanj[.])))
+    
     # allocate again
     latent[k + 1, i] <- latent[k, i] # make a copy
-    for (i in 1:n) { # smart starting value according to prior
+    for (i in 1:n) { 
       cnts <- nj + prior$nu - as.integer(latent[k + 1, i] == 1:2)
       wts <- cnts * map_dbl(mu[k + 1, ], ~ dnorm(y[i], ., sigma[k + 1]))
       latent[k+ 1, i] <- sample(2, 1, prob = wts / sum(wts)) # allocate ever individual
@@ -539,7 +611,7 @@ gibbs7 <- function(nsim, y, prior) {
   an <- prior$a0 + (n - 1)/2 + K / 2
   
   # sampler
-  pb <- progress_bar$new(total = nsim)
+  # pb <- progress_bar$new(total = nsim)
   for (k in 1:nsim) {
     # counts and means per component
     meanj <- map_dbl(1:K, ~ ifelse(nj[.] > 0, mean(y[latent[k, ] == .]), 0))
@@ -556,16 +628,17 @@ gibbs7 <- function(nsim, y, prior) {
     # sample the means
     mu[k + 1, ] <-  map_dbl(1:K, ~
       rnorm(1, munj[.], sigma[k + 1] / sqrt(kappanj[.])))
+    
     # allocate again
     latent[k + 1, i] <- latent[k, i] # make a copy
-    for (i in 1:n) { # smart starting value according to prior
+    for (i in 1:n) {
       cnts <- nj + prior$nu - as.integer(latent[k + 1, i] == 1:K)
       wts <- cnts * map_dbl(mu[k + 1, ], ~ dnorm(y[i], ., sigma[k + 1]))
       latent[k+ 1, i] <- sample(K, 1, prob = wts / sum(wts)) # allocate ever individual
     }
     nj <- map_int(1:K, ~ sum(latent[k + 1, ] == .))
     weights[k + 1, ] <- (nj + prior$nu) / sum(nj + prior$nu)
-    pb$tick()
+    # pb$tick()
   }
   
   list(mu = mu[-1, ], omega = omega[-1], 
@@ -589,7 +662,7 @@ And run the sampler
 ```{r}
 nsim <- 1000
 set.seed(110104)
-prior <- list(mu0 = rnorm(K), a0 = 1, b0 = .01, kappa0 = 1., nu = rep(1, K))
+prior <- list(mu0 = rnorm(K), a0 = 1, b0 = .01, kappa0 = 5., nu = rep(1, K))
 sim7 <- gibbs7(nsim, simdata, prior)
 ```
 
@@ -600,24 +673,45 @@ We can graph the results
 warmup <- 500
 grid_length <- 100
 gridy <- seq(-4.5, 4.5, length.out = grid_length)
-hist(simdata, breaks = 50, prob = TRUE, xlim = c(-4.5, 4.5),
-  col = alpha("blue", 0.2), border = "white", xlab = "simulated data",
+hist(simdata, breaks = 35, prob = TRUE, xlim = c(-4.5, 4.5),
+  col = alpha("blue", 0.15), border = "white", xlab = "simulated data",
   main = "Problem 7: Normal Mixture with K=5 clusters (simulated data)")
 mean_dens <- numeric(grid_length)
 for (k in (warmup + 1):nsim) {
-  dens <- numeric(length(gridy))
-  for (i in 1:length(gridy)) {
+  dens <- numeric(grid_length)
+  for (i in 1:grid_length) {
     dens[i] <- sum(sim7$weights[k, ] * map_dbl(1:K, ~dnorm(gridy[i], sim7$mu[k, .], sim7$sigma[k])))
   }
   mean_dens <- mean_dens + dens / (nsim - warmup)
   lines(gridy, dens, col = alpha("black", 0.005), lw = 3)
 }
 lines(gridy, mean_dens, col = alpha("black", 0.8), lw = 2)
-lines(density(simdata, bw = sigma_true / 2), col = "magenta")
-legend("topright", c("simdata", "posterior density", "kde estimate"),
-  pch = c(15, NA, NA), lt = c(NA,  1, 1),
-  col = c(alpha("blue", 0.4), "black", "magenta"))
+true_dens <- numeric(grid_length)
+for (i in 1:grid_length) {
+  true_dens[i] <- sum(w_true * map_dbl(1:K, ~dnorm(gridy[i], mu_true[.], sigma_true)))
 }
+# lines(density(simdata, bw = sigma_true / 2), col = "magenta")
+lines(gridy, true_dens, col = "magenta", lt = 2, lw = 2)
+lines(density(simdata, bw = sigma_true / 2), col = "darkgreen", lt = 3, lw = 2)
+legend("topright", c("histogram", "posterior mean", "true density", "kde"),
+  pch = c(15, NA, NA, NA), lt = c(NA,  1, 2, 3), lw = c(NA, 1, 2, 2),
+  col = c(alpha("blue", 0.4), "black", "magenta", "darkgreen"))
+}
+```
+
+Coincididence table
+
+```{r}
+coincidence <- matrix(0, n, n)
+for (i in 1:(n - 1)) {
+  for (j in (i + 1):n) {
+    coincidence[i, j] <- mean(sim7$latent[ ,i] == sim7$latent[ ,j])
+  }
+}
+```
+
+```{r}
+image(coincidence, col  = gray((0:32)/32))
 ```
 
 
