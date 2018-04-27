@@ -380,7 +380,7 @@ $$
 p(z_i \mid z_{\neg i}, x , \eta) p(x_i \mid \eta, z_i, x_{\neg i}) & = \frac{p(x_i \mid z, x_{\neg i}, \eta)p(z_i \mid z_{\neg i}, x_{\neg i}, \eta)}{p(x_i \mid z_i, x_{\neg i}, \eta)}p(x_i \mid z_i, x_{\neg i}, \eta) \\
 & = p(x_i \mid z, x_{\neg i}, \eta)p(z_i \mid z_{\neg i}, x_{\neg i}, \eta) \\
 & = p(x_i \mid z_i, \eta)p(z_i \mid z_{\neg i}, \eta) \\
-& = N(x_i \mid \eta_{z_i})\frac{\nu_j + n^{\neg i}_j}{\sum_k(\nu_k + n^{\neg i}_k)}
+& = N(x_i \mid \eta_{z_i})\frac{\nu_{z_i} + n^{\neg i}_{z_i}}{\sum_k(\nu_k + n^{\neg i}_k)}
 \end{aligned}
 $$
 where the third equality holds because the $x_i$ are independent of the $x_{\neg i}$ and $z_{\neg i}$ given $\eta$; and similarly, $z_i$ is independent of $x_{\neg i}$ given $z_{\neg i}$ and $\eta$. Now plugging this back into the integral we get
@@ -393,19 +393,34 @@ $$
 $$
 So we have
 $$
-(\nu_j + n^{\neg i}_j)\int N(x_i \mid \eta_{z_i}) p(\eta \mid z_{\neg i}, x_{\neg i}) d\eta = (\nu_j + n^{\neg i}_j)\int N(x_i \mid \eta_{z_i}) p(\eta_{z_i} \mid z_{\neg i}, x_{\neg i}) d\eta_{z_i},
+(\nu_{} + n^{\neg i}_{z_i})\int N(x_i \mid \eta_{z_i}) p(\eta \mid z_{\neg i}, x_{\neg i}) d\eta = (\nu_{z_i} + n^{\neg i}_{z_i})\int N(x_i \mid \eta_{z_i}) p(\eta_{z_i} \mid z_{\neg i}, x_{\neg i}) d\eta_{z_i},
 $$
 and this integral is a piece of cake, since we have computed this integral many times: it is the posterior predictive of a normal distribution, which we know it's a t-distribution.
 
 So putting all together we arrive to
 $$
-p(z_i  \mid z_{\neg i}, x) \propto (\nu_j + n^{\neg i}_j) \,\mathrm{tStudent}(x_i \mid \mu_{n,z_i}, b_j^{\neg i} / (\kappa_0 a^{\neg i}_j), 2a^{\neg i}_j )
+p(z_i  = j\mid z_{\neg i}, x) \propto (\nu_j + n^{\neg i}_j) \,\mathrm{tStudent}\left(x_i \mid \mu^{\neg i}_{n, j}, \left(1 + 1/\kappa^{-j}_{n,j}\right) b_{n, j}^{\neg i} / a^{\neg i}_{n, j}, 2a^{\neg i}_{n, j} \right)
 $$
 
-* $\mu_n = \frac{n_{j, -i}}{n_{j, -i} + \kappa_0}\bar{x}_{j, -i} + \frac{\kappa_0}{n_{j, -i} + \kappa_0}\mu_{0,j}$
-* $a_n = n_{j, -i} - (n - 1 - 1) / 2 + K / 2$
-* $b_n = \frac{1}{2}\sum_{z_k = j, k\neq i}(x_i - \bar{x}_{j, -i} )^2 + \frac{n_{j,-1}\kappa_0 }{n_{j,-1} + \kappa_0}(\bar{x}_{j, -1} - \mu_{0,j})^2$
+* $\kappa^{\neg i}_{n, j} = \kappa_0 + n^{\neg i}_j$
+* $\mu^{\neg i}_{n, j} = \frac{n^{\neg i}_{j}}{\kappa^{\neg i}_{n, j}}\bar{x}^{\neg i}_{j} + \frac{\kappa_0}{\kappa^{\neg i}_{n, j}}\mu_{0,j}$
+* $a^{\neg i}_{n, j} = a_0 + n^{\neg i}_j / 2$
+* $b^{\neg i}_{n, j} = b_0 + \frac{1}{2}\sum_{z_k = j, k\neq i}(x_i - \bar{x}^{\neg i}_{j} )^2 + \frac{n^{\neg i}_{j} \kappa_0 }{\kappa^{\neg i}_{n, j}}(\bar{x}^{\neg i}_{j}  - \mu_{0,j})^2$.
 
+The problem with these expressions is that they are different for each $i$, and having to recompute everything for each iteration is not efficient. It'd be better if we can express this in terms of the sufficient statistics of the complete data. Denote for convenience denote $I_{ij}= 1(z_i = j)$, and define the sufficient statistics of the complete data
+$$
+n_j = \sum_i I_{ij}, \quad s_j = \sum_i x_i I_{ij}, \quad ss_j = \sum_i x_i^2 I_{ij}
+$$
+
+* $n^{\neg i}_{n, j} = n_j - I_{ij}$
+* $\kappa^{\neg i}_{n, j} = \kappa_0 + n^{\neg i}_j$
+* $\bar{x}^{\neg i}_{n, j} =\frac{s_j - x_i I_{ij}}{n^{\neg i}_{n, j}}$
+* $\mu^{\neg i}_{n, j} = \frac{n^{\neg i}_{n, j}}{\kappa^{\neg i}_{n, j}}\bar{x}^{\neg i}_{n, j} + \frac{\kappa_0}{\kappa^{\neg i}_{n, j}}\mu_{0,j}$
+* $a^{\neg i}_{n, j} = a_0 + n^{\neg i}_j / 2$
+* $\zeta^{\neg i}_{n, j} = (ss_j - x_i^2 I_{ij}) - n^{\neg i}_{n, j}(\bar{x}^{\neg i}_{n, j})^2$
+* $b^{\neg i}_{n, j} = b_0 + \frac{1}{2}\left(\zeta^{\neg i}_{n, j}  + \frac{\kappa_0 n^{\neg i}_{n, j}}{\kappa^{\neg i}_{n, j}}\left(\bar{x}^{\neg i}_{n, j} - \mu_{0,j}\right)^2\right)$
+
+This should be useful to derive an efficient sampler.
 
 [Back to Index](#TOC)
 
@@ -492,7 +507,7 @@ grid_length <- 100
 gridy <- seq(0.4, 1.6, length.out = grid_length)
 hist(y[resto$DinnerService == 0], breaks= 20, prob = TRUE, 
   col = alpha("blue", 0.1), border = "white", xlim = c(0.3, 1.7), xlab = "Price",
-  main = "Problem 5: Normal Mixture with Collapsed Sampler")
+  main = "Problem 5: Collapsed Sampler from Exercise 3")
 hist(y[resto$DinnerService == 1], breaks= 20, prob = TRUE, add = TRUE,
   col = alpha("red", 0.1), border = "white")
 hist(y, breaks= 40, prob = TRUE, add = TRUE,
@@ -511,6 +526,8 @@ legend("topright", c("price[service=0]", "price[service=1]", "price", "posterior
   col = c(alpha("blue", 0.4), alpha("red", 0.4), alpha("gray", 0.5), "black", "magenta"))
 }
 ```
+
+
 
 [Back to Index](#TOC)
 
@@ -574,6 +591,10 @@ $$
 ### Exercise 7
 
 *Modify your previous Gibbs sampler to allow multiple classes, and two-dimensional data. Generate some data according to a Dirichlet mixture of 5 Gaussians in $\mathbb{R}^2$, and test your code on it.*
+
+**PART 1: Multiple Classes but One dimensional**
+
+**Strategy A.1: A collapsed sampler**
 
 Here's the modified Gibbs sampler. Tiny modifications and using a Dirichlet. As a nice bonus I'm adding a process bar.
 
@@ -662,7 +683,7 @@ And run the sampler
 ```{r}
 nsim <- 1000
 set.seed(110104)
-prior <- list(mu0 = rnorm(K), a0 = 1, b0 = .01, kappa0 = 5., nu = rep(1, K))
+prior <- list(mu0 = rnorm(K), a0 = 10, b0 = .01, kappa0 = .01, nu = rep(1, K))
 sim7 <- gibbs7(nsim, simdata, prior)
 ```
 
@@ -675,7 +696,7 @@ grid_length <- 100
 gridy <- seq(-4.5, 4.5, length.out = grid_length)
 hist(simdata, breaks = 35, prob = TRUE, xlim = c(-4.5, 4.5),
   col = alpha("blue", 0.15), border = "white", xlab = "simulated data",
-  main = "Problem 7: Normal Mixture with K=5 clusters (simulated data)")
+  main = "Problem 7: Normal  K=5 clusters (simulated data)")
 mean_dens <- numeric(grid_length)
 for (k in (warmup + 1):nsim) {
   dens <- numeric(grid_length)
@@ -699,20 +720,353 @@ legend("topright", c("histogram", "posterior mean", "true density", "kde"),
 }
 ```
 
-Coincididence table
+**Strategy A.2: A more collapsed sampler**
+
+Let's now program the sampler from Exercise 5 that further collapses the parameters.
+
 
 ```{r}
-coincidence <- matrix(0, n, n)
-for (i in 1:(n - 1)) {
-  for (j in (i + 1):n) {
-    coincidence[i, j] <- mean(sim7$latent[ ,i] == sim7$latent[ ,j])
+gibbs7b <- function(nsim, y, prior) {
+  # meta
+  n <- length(y)
+  K <- length(prior$mu0)
+  
+  # latent variables & sufficient statistics
+  latent <- matrix(0, nsim + 1, n)
+  nj <- matrix(0, nsim + 1, K)
+  sj <- matrix(0, nsim + 1, K)
+  ssj <- matrix(0, nsim + 1, K)
+  
+  # initialise
+  latent[1, ] <- sample(1:K, size = n, replace = TRUE, prob = prior$nu)
+  nj[1, ] <- map_int(1:K, ~ sum(latent[1, ] == .))
+  sj[1, ] <- map_dbl(1:K, ~ sum(y[latent[1, ] == .]))
+  ssj[1, ] <- map_dbl(1:K, ~ sum(((y[latent[1, ] == .]))^2))
+
+  # sampler 
+  for (k in 1:nsim) {
+    # update latent variales
+    for (i in 1:n) {
+      # obtain posterior hyperparameters
+      nj_negi <- nj[k, ] - as.integer(latent[k, i] == 1:K)
+      ybarj_negi <- (sj[k, ]  - y[i] * as.integer(latent[k, i] == 1:K)) / pmax(nj_negi, 1) # careful with zeros
+      kappaj_negi <- nj_negi + prior$kappa0
+      muj_negi <- (nj_negi * ybarj_negi + prior$kappa0 * prior$mu0) / kappaj_negi
+      aj_negi <- prior$a0 + 0.5 * nj_negi
+      zetaj_negi <-  ssj[k, ] - y[i]^2 * as.integer(latent[k, i] == 1:K) -
+        nj_negi * (ybarj_negi)^2
+      bj_negi <- prior$b0 + 0.5*zetaj_negi +
+        0.5 * (prior$kappa0 * nj_negi * (ybarj_negi - prior$mu0)^2 / kappaj_negi)
+      sigmaj_negi <- sqrt((1 + 1/kappaj_negi) * bj_negi / aj_negi)
+      df_negi <- 2 * aj_negi
+      
+      # resample individual
+      wts <- (prior$nu + nj_negi) * dt((y[i] - muj_negi) / sigmaj_negi, df = df_negi) / sigmaj_negi
+      latent[k + 1, i] <- sample(1:K, size = 1, prob = wts / sum(wts))
+    }
+     
+    # update sufficient statistics
+    nj[k + 1, ] <- map_int(1:K, ~ sum(latent[k + 1, ] == .))
+    sj[k + 1, ] <- map_dbl(1:K, ~ sum(y[latent[k + 1, ] == .]))
+    ssj[k + 1, ] <- map_dbl(1:K, ~ sum(((y[latent[k + 1, ] == .]))^2))    
   }
+  
+  list(latent = latent, nj = nj, sj = sj, ssj = ssj)
+}
+```
+
+
+Run the sampler
+
+```{r}
+nsim <- 1000
+set.seed(999)
+prior <- list(mu0 = rnorm(K, 0, 3), a0 = 5, b0 = .05, kappa0 = 0.01, nu = rep(1, K))
+sim7b <- gibbs7b(nsim, simdata, prior)
+```
+
+Graph the results (now it's trickier because we need predictive densities)
+
+```{r}
+{
+warmup <- 500
+grid_length <- 100
+gridy <- seq(-4.5, 4.5, length.out = grid_length)
+hist(simdata, breaks = 35, prob = TRUE, xlim = c(-4.5, 4.5),
+  col = alpha("blue", 0.15), border = "white", xlab = "simulated data",
+  main = "Problem 7 (extra):  K=5 per clusters variances cluster (simulated data)")
+mean_dens <- numeric(grid_length)
+for (k in (warmup + 1):nsim) {
+  # Find predictive hyperparameters
+  nj <- sim7b$nj[k, ]
+  ybarj <-  sim7b$sj[k, ] / pmax(1, nj)
+  kappaj <- nj + prior$kappa0
+  muj <- (nj * ybarj + prior$kappa0 * prior$mu0) / kappaj
+  aj <- prior$a0 + 0.5 * kappaj
+  zetaj <-   sim7b$ssj[k, ] - nj * (ybarj)^2
+  bj <- prior$b0 + 0.5 * zetaj + 0.5 * prior$kappa0 * nj * (ybarj - prior$mu0)^2 / kappaj
+  sigmaj <- sqrt((1 + 1/kappaj) * bj / aj)
+  df <- 2 * aj
+  # Evaluate
+  dens <- numeric(grid_length)
+  for (i in 1:grid_length) {
+    dens[i] <- sum((prior$nu + nj) * dt((gridy[i] - muj) / sigmaj, df = df) / sigmaj) / sum(nj) 
+  }
+  mean_dens <- mean_dens + dens / (nsim - warmup)
+  lines(gridy, dens, col = alpha("black", 0.005), lw = 3)
+}
+lines(gridy, mean_dens, col = alpha("black", 0.8), lw = 2)
+true_dens <- numeric(grid_length)
+for (i in 1:grid_length) {
+  true_dens[i] <- sum(w_true * map_dbl(1:K, ~dnorm(gridy[i], mu_true[.], sigma_true)))
+}
+# lines(density(simdata, bw = sigma_true / 2), col = "magenta")
+lines(gridy, true_dens, col = "magenta", lt = 2, lw = 2)
+lines(density(simdata, bw = sigma_true / 2), col = "darkgreen", lt = 3, lw = 2)
+legend("topright", c("histogram", "posterior mean", "true density", "kde"),
+  pch = c(15, NA, NA, NA), lt = c(NA,  1, 2, 3), lw = c(NA, 1, 2, 2),
+  col = c(alpha("blue", 0.4), "black", "magenta", "darkgreen"))
+}
+```
+
+**PART 2: Multiple Dimensions**
+
+We'll now derive a sampler for $x\in \mathbb{R}^d$. I'll adapt the multiple-variance parameter version of the last collapsed sampler. The problem is that we'll need a multivariate t distribution. Probably the best way to manipulate the data now is with matrices, so that things keep working more less similarly. The mathematics are identical to what we did before, just adapting the to the multivariate version. Choice of priors
+$$
+\Lambda \sim W(\xi_0, \Omega_0^{-1}), \quad \mu_j \sim N(0, (\kappa_0 \Lambda)^{-1}), \quad 
+$$
+Posterior predictive
+$$
+p(z_i  = j\mid z_{\neg i}, x) \propto (\nu_j + n^{\neg i}_j) \,\mathrm{tStudent}\left(x_i \;\big\vert\; \mu^{\neg i}_{n, j}, \;  (\kappa^{\neg i}_{n, j}(\xi^{\neg i}_{n, j} - d + 1))^{-1}\Omega^{\neg i}_{n, j}, \; \xi^{\neg i}_{n, j} - d + 1\right).
+$$
+
+where
+
+* $\kappa^{\neg i}_{n, j} = \kappa_0 + n^{\neg i}_j$
+* $\mu^{\neg i}_{n, j} = \frac{n^{\neg i}_{j}}{\kappa^{\neg i}_{n, j}}\bar{x}^{\neg i}_{j} + \frac{\kappa_0}{\kappa^{\neg i}_{n, j}}\mu_{0,j}$
+* $\xi^{\neg i}_{n, j} = \xi_0 + n^{\neg i}_j$
+* $\Omega^{\neg i}_{n, j} = \Omega_0 + \sum_{k \neq i, z_k=j} (x_k - \bar{x}^{\neg i}_{j})(x_k - \bar{x}^{\neg i}_{j})' + \frac{\kappa_0n^{\neg i}_j}{\kappa^{\neg i}_{n, j}}(\bar{x}^{\neg i}_{j} - \mu_0)(\bar{x}^{\neg i}_{j}- \mu_0)'$.
+
+In order to implement it efficiently we'll need sufficient statistics
+
+$$
+n_j = \sum_i I_{ij}, \quad s_j = \sum_i x_i I_{ij}, \quad SS_j = \sum_i x_ix_i'I_{ij}
+$$
+
+* $n^{\neg i}_{n, j} = n_j - I_{ij}$
+* $\kappa^{\neg i}_{n, j} = \kappa_0 + n^{\neg i}_j$
+* $\bar{x}^{\neg i}_{n, j} =\frac{s_j - x_i I_{ij}}{n^{\neg i}_{n, j}}$
+* $\mu^{\neg i}_{n, j} = \frac{n^{\neg i}_{n, j}}{\kappa^{\neg i}_{n, j}}\bar{x}^{\neg i}_{n, j} + \frac{\kappa_0}{\kappa^{\neg i}_{n, j}}\mu_{0,j}$
+* $\xi^{\neg i}_{n, j} = \xi + n^{\neg i}_j$
+* $\zeta^{\neg i}_{n, j} = (SS_j - x_ix_i' I_{ij}) - n^{\neg i}_{n, j}(\bar{x}^{\neg i}_{n, j})(\bar{x}^{\neg i}_{n, j})'$
+* $\Omega^{\neg i}_{n, j} = \Omega_0 + \zeta^{\neg i}_{n, j}  + \frac{\kappa_0 n^{\neg i}_{n, j}}{\kappa^{\neg i}_{n, j}}\left(\bar{x}^{\neg i}_{n, j} - \mu_{0,j}\right)^2$
+
+This should be useful to derive an efficient sampler.
+
+```{r}
+library(tidyverse)
+library(mvtnorm)
+library(Matrix)
+```
+
+Let's start by simulate a bivariate version of the simulated data form before.
+
+```{r}
+K <- 3
+d <- 2
+n <- 300
+w_true <- c(0.3, 0.1, 0.21)
+mu_true <- matrix(c(-2, 2, 0, -2, 1.5, 0), ncol = 2, byrow = TRUE)
+sigma_true <- 0.35
+simdata <- matrix(0, n, d)
+simdata[1:100, ] <- rmvnorm(100, mu_true[1, ], diag(sigma_true, d))
+simdata[101:200, ] <- rmvnorm(100, mu_true[2, ], diag(sigma_true, d))
+simdata[201:300, ] <- rmvnorm(100, mu_true[3, ], diag(sigma_true, d))
+ground_truth <- c(rep(1, 100), rep(2, 100), rep(3, 100))
+```
+
+```{r}
+plot(simdata, pch = 21, bg = ground_truth, main = "simulated bidimensional data")
+```
+
+
+```{r}
+gibbs7c <- function(nsim, Y, prior) {
+  # meta
+  n <- nrow(Y)
+  d <- ncol(Y)
+  K <- length(prior$nu)
+  
+  # latent variables & sufficient statistics
+  latent <- matrix(0, nsim + 1, n)
+  nj <- matrix(0, nsim + 1, K)
+  sj <- array(0, c(nsim + 1, K, d))
+  SSj <- array(0, dim = c(nsim + 1, K, d, d))
+  
+  # initialise
+  latent[1, ] <- sample(1:K, size = n, replace = TRUE, prob = prior$nu)
+  for (j in 1:K) {
+    nj[1, j] <- sum(latent[1, ] == j)  
+    Yj <- Y[latent[1, ] == j, ]
+    sj[1, j, ] <- apply(Yj, 2, sum)
+    SSj[1, j, , ] <- crossprod(Yj, Yj)
+  }
+  
+
+  # sampler 
+  for (k in 1:(nsim - 1)) {
+    # update latent
+    for (i in 1:n) {
+      wts <- numeric(K)
+      for (j in 1:K) { 
+        # Adjust sufficient statistics if necessary
+        nj_negi <- nj[k, j]
+        sj_negi <- sj[k, j, ]
+        SSj_negi <- SSj[k, j, , ]
+        if (latent[k, i] == j) {
+          nj_negi <- nj_negi - 1
+          sj_negi <- sj_negi - Y[i, ]
+          SSj_negi <- SSj_negi - tcrossprod(Y[i, ])
+        } 
+        
+        # Find all hyperparameters
+        ybarj_negi <- sj_negi / pmax(nj_negi, 1) 
+        kappaj_negi <- nj_negi + prior$kappa0
+        muj_negi <- (nj_negi * ybarj_negi + prior$kappa0 * prior$mu0[j, ]) / kappaj_negi
+        xij_negi <- prior$xi0 + nj_negi
+        Omegaj_negi <- prior$Omega0 + SSj_negi - nj_negi * tcrossprod(ybarj_negi)
+        Sigmaj_negi <- Omegaj_negi / kappaj_negi / (xij_negi - d + 1)
+          
+        # assign weight
+        wts[j] <-  (prior$nu[j] + nj_negi) * dmvt(Y[i, ], muj_negi, Sigmaj_negi, xij_negi - d + 1, log = FALSE)
+      }
+      latent[k + 1, i] <- sample(1:K, size = 1, prob = wts / sum(wts))
+    }
+  
+    # update sufficient statistics
+    for (j in 1:K) {
+      nj[k + 1, j] <- sum(latent[k + 1, ] == j)  
+      Yj <- Y[latent[k + 1, ] == j, ]
+      sj[k + 1, j, ] <- apply(Yj, 2, sum)
+      SSj[k + 1, j, , ] <- crossprod(Yj, Yj)
+    }
+     
+  }
+  
+  list(latent = latent[-1, ], nj = nj[-1, ], sj = sj[-1, , ], SSj = SSj[-1, , , ])
+}
+```
+
+Because this is already complex, we'll do a function evaluate the density of points that we'll recycle later.
+
+```{r}
+eval_density7c <- function(Y, sim, prior) {
+  nsim <- nrow(sim$latent)
+  n <- nrow(Y)
+  d <- ncol(Y)
+  K <- length(prior$nu)
+  
+  dens <- numeric(n)
+  for (i in 1:n) {
+    for (k in 1:nsim) {
+      wts <- numeric(K)
+      denominator <- sum(prior$nu)
+      for (j in 1:K) { 
+        # Adjust sufficient statistics if necessary
+        nj <- sim7c$nj[k, j]
+        sj <- sim7c$sj[k, j, ]
+        SSj <- sim7c$SSj[k, j, , ]
+        
+        # Find all hyperparameters
+        ybarj <- sj / pmax(nj, 1) 
+        kappaj <- nj + prior$kappa0
+        muj <- (nj * ybarj + prior$kappa0 * prior$mu0[j, ]) / kappaj
+        xij <- prior$xi0 + nj
+        Omegaj <- prior$Omega0 + SSj_negi - nj * tcrossprod(ybarj)
+        Sigmaj <- Omegaj / kappaj / (xij - d + 1)
+          
+        # assign weight
+        denominator <- denominator + nj
+        wts[j] <-  (prior$nu[j] + nj) * dmvt(Y[i, ], muj, Sigmaj, xij - d + 1, log = FALSE)
+      }
+    dens[i] <- dens[i] +  wts[j] / denominator / nsim
+    }
+  }
+  dens
+}
+```
+
+Definition of prior
+```{r}
+K <- 3
+d <- 2
+prior <- list(mu0 = matrix(rnorm(K*d, 0, 3), ncol = d), xi0 = 20, Omega0 = 20 * diag(d), kappa0 = 0.1, nu = rep(1, K))
+```
+
+
+Running the sampler
+```{r}
+nsim <- 100
+set.seed(110104)
+sim7c <- gibbs7c(nsim, simdata, prior)
+```
+
+```{r}
+gridY <- expand.grid(seq(-5, 5, length.out = 100), seq(-5, 5, length.out = 100))
+densY <- eval_density7c(gridY, sim7c, prior)
+```
+
+Let's step up the plotting game an use ggplot.
+
+[Back to Index](#TOC)
+
+----
+
+
+
+### Exercise 8
+
+*OK, let's try a real dataset! We're going to use a set of images from MNIST. Download the dataset mnist.csv from the data directory, and transform it to be zero mean, unit variance. Each row contains the vectorized pixel values for an image of a digit. The whole dataset contains 100 copies of each digit, with the first 100 being zeros, the next 100 being ones, etc. You can visualize a data point by reshaping it to be 28$\times$28:*
+
+* R: `image(matrix(X[1,],nrow=28))`
+* Python: `import matplotlib.pyplot; plt.imshow(X[0,:].reshape(28,28)); plt.show()`
+* Matlab: `imshow(reshape(X(1,:),28,28))`
+
+*The data is 784-dimensional; let's reduce this by running PCA and using the first 50 dimensions. Now, try running your Gibbs sampler with 10 classes, and $\alpha_1 =\alpha_2=\dots=\alpha_{10} = 1$. This prior corresponds to a uniform distribution on the 9-simplex. It's fine to use a spherical covariance here... in fact it will work fine if you just have a prior on the means, and fix $\sigma^2=1$. Here are some ways you can visualize your output:*
+
+
+* *Based on a single sample, plot the recovered clustering vs the ground truth clustering.*
+* *Based on a single sample, visualize the mean image for each cluster, by multiplying the mean embedding with the coefficients obtained using PCA.*
+* *Over multiple samples, create a co-occurrence matrix with entries being the proportion of the times that the two data points are in the same sample.*
+  
+*Solution*.
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+mnist <- read_csv("mnist.csv", col_names = FALSE)
+```
+
+```{r}
+ground_truth <- integer(1000)
+for (i in 1:10) {
+  ground_truth[((i - 1)*100 + 1):(i*100)] <- i - 1
 }
 ```
 
 ```{r}
-image(coincidence, col  = gray((0:32)/32))
+scaled_mnist <- scale(mnist)
+scaled_mnist[is.nan(scaled_mnist)] <- 0
 ```
+
+```{r}
+svd_output <- svd(scaled_mnist, nu = 50)
+minst_pca <- svd_output$u
+```
+
+
 
 
 [Back to Index](#TOC)
