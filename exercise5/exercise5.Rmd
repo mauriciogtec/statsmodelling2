@@ -778,9 +778,9 @@ gibbs7b <- function(nsim, y, prior) {
 Run the sampler
 
 ```{r}
-nsim <- 1000
+nsim <- 10000
 set.seed(999)
-prior <- list(mu0 = rnorm(K, 0, 3), a0 = 5, b0 = .05, kappa0 = 0.01, nu = rep(1, K))
+prior <- list(mu0 = rnorm(K, 0, 6), a0 = 20, b0 = 0.01, kappa0 = .1, nu = rep(1, K))
 sim7b <- gibbs7b(nsim, simdata, prior)
 ```
 
@@ -788,7 +788,7 @@ Graph the results (now it's trickier because we need predictive densities)
 
 ```{r}
 {
-warmup <- 500
+warmup <- nsim %/% 2
 grid_length <- 100
 gridy <- seq(-4.5, 4.5, length.out = grid_length)
 hist(simdata, breaks = 35, prob = TRUE, xlim = c(-4.5, 4.5),
