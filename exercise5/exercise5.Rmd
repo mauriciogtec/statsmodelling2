@@ -80,7 +80,6 @@ transformed parameters {
 }
 model {
   // prior
-  // alpha ~ 1; it's assumed
   omega ~ gamma(a0, b0);
   beta ~ normal(mu0, sigma / kappa0);
   // likelihood
@@ -877,11 +876,11 @@ d <- 2
 n <- 300
 w_true <- c(0.3, 0.1, 0.21)
 mu_true <- matrix(c(-2, 2, 0, -2, 1.5, 0), ncol = 2, byrow = TRUE)
-sigma_true <- 0.35
+sigma2_true <- 0.35
 simdata <- matrix(0, n, d)
-simdata[1:100, ] <- rmvnorm(100, mu_true[1, ], diag(sigma_true, d))
-simdata[101:200, ] <- rmvnorm(100, mu_true[2, ], diag(sigma_true, d))
-simdata[201:300, ] <- rmvnorm(100, mu_true[3, ], diag(sigma_true, d))
+simdata[1:100, ] <- rmvnorm(100, mu_true[1, ], diag(sigma2_true, d))
+simdata[101:200, ] <- rmvnorm(100, mu_true[2, ], diag(sigma2_true, d))
+simdata[201:300, ] <- rmvnorm(100, mu_true[3, ], diag(sigma2_true, d))
 ground_truth <- c(rep(1, 100), rep(2, 100), rep(3, 100))
 ```
 
@@ -891,7 +890,7 @@ plot(simdata, pch = 21, bg = ground_truth, main = "simulated bidimensional data"
 
 
 ```{r}
-gibbs7c <- function(nsim, Y, prior) {
+gibbs7c <- function(nsim, Y, prior, progress = FALSE) {
   # meta
   n <- nrow(Y)
   d <- ncol(Y)
@@ -909,12 +908,13 @@ gibbs7c <- function(nsim, Y, prior) {
     nj[1, j] <- sum(latent[1, ] == j)  
     Yj <- Y[latent[1, ] == j, ]
     sj[1, j, ] <- apply(Yj, 2, sum)
-    SSj[1, j, , ] <- crossprod(Yj, Yj)
+    SSj[1, j, , ] <- crossprod(Yj)
   }
   
 
   # sampler 
-  for (k in 1:(nsim - 1)) {
+  if(progress) pb <- progress::progress_bar$new(total = nsim)
+  for (k in 1:nsim) {
     # update latent
     for (i in 1:n) {
       wts <- numeric(K)
@@ -934,62 +934,79 @@ gibbs7c <- function(nsim, Y, prior) {
         kappaj_negi <- nj_negi + prior$kappa0
         muj_negi <- (nj_negi * ybarj_negi + prior$kappa0 * prior$mu0[j, ]) / kappaj_negi
         xij_negi <- prior$xi0 + nj_negi
-        Omegaj_negi <- prior$Omega0 + SSj_negi - nj_negi * tcrossprod(ybarj_negi)
-        Sigmaj_negi <- Omegaj_negi / kappaj_negi / (xij_negi - d + 1)
+        Omegaj_negi <- prior$Omega0 + SSj_negi - nj_negi * tcrossprod(ybarj_negi) + 
+          prior$kappa0 * nj_negi / kappaj_negi * tcrossprod(ybarj_negi - prior$mu0[j])
+        Sigmaj_negi <- (1 + 1 / kappaj_negi) * Omegaj_negi / (xij_negi - d + 1) 
           
         # assign weight
-        wts[j] <-  (prior$nu[j] + nj_negi) * dmvt(Y[i, ], muj_negi, Sigmaj_negi, xij_negi - d + 1, log = FALSE)
+        wts[j] <-  (prior$nu[j] + nj_negi) * pmin(dmvt(Y[i, ], muj_negi, Sigmaj_negi, xij_negi - d + 1, log = FALSE), 1)
+        if (sum(wts) == 0) {
+          wts <- rep(1, K)
+        }
       }
-      latent[k + 1, i] <- sample(1:K, size = 1, prob = wts / sum(wts))
+      # wts <- wts / sum(wts)
+      # wts <- pmax(wts, 1/n)
+      wts <- wts + 1e-6
+      latent[k + 1, i] <- sample(1:K, size = 1, prob = wts)
     }
   
     # update sufficient statistics
     for (j in 1:K) {
       nj[k + 1, j] <- sum(latent[k + 1, ] == j)  
-      Yj <- Y[latent[k + 1, ] == j, ]
-      sj[k + 1, j, ] <- apply(Yj, 2, sum)
-      SSj[k + 1, j, , ] <- crossprod(Yj, Yj)
+      if (nj[k + 1, j] > 0) {
+        Yj <- Y[latent[k + 1, ] == j, ]
+        if (nj[k + 1, j] > 1) {
+          sj[k + 1, j, ] <- apply(Yj, 2, sum)  
+          SSj[k + 1, j, , ] <- crossprod(Yj)  
+        } else {
+          sj[k + 1, j, ] <- Yj
+          SSj[k + 1, j, , ] <- matrix(0, d, d)
+        }
+      } else {
+        sj[k + 1, j, ] <- rep(0, d)
+        SSj[k + 1, j, , ] <- matrix(0, d, d)
+      }
+      
     }
-     
+    if(progress) pb$tick()
   }
   
-  list(latent = latent[-1, ], nj = nj[-1, ], sj = sj[-1, , ], SSj = SSj[-1, , , ])
+  list(latent = latent, nj = nj, sj = sj, SSj = SSj)
 }
 ```
 
 Because this is already complex, we'll do a function evaluate the density of points that we'll recycle later.
 
 ```{r}
-eval_density7c <- function(Y, sim, prior) {
+eval_density7c <- function(Y, sim, prior, warmup = 0) {
   nsim <- nrow(sim$latent)
   n <- nrow(Y)
   d <- ncol(Y)
   K <- length(prior$nu)
   
   dens <- numeric(n)
-  for (i in 1:n) {
-    for (k in 1:nsim) {
+  for (k in (warmup + 1):nsim) {
+    for (i in 1:n) {
       wts <- numeric(K)
-      denominator <- sum(prior$nu)
       for (j in 1:K) { 
         # Adjust sufficient statistics if necessary
-        nj <- sim7c$nj[k, j]
-        sj <- sim7c$sj[k, j, ]
-        SSj <- sim7c$SSj[k, j, , ]
+        nj <- sim$nj[k, j]
+        sj <- sim$sj[k, j, ]
+        SSj <- sim$SSj[k, j, , ]
         
         # Find all hyperparameters
         ybarj <- sj / pmax(nj, 1) 
         kappaj <- nj + prior$kappa0
         muj <- (nj * ybarj + prior$kappa0 * prior$mu0[j, ]) / kappaj
         xij <- prior$xi0 + nj
-        Omegaj <- prior$Omega0 + SSj_negi - nj * tcrossprod(ybarj)
-        Sigmaj <- Omegaj / kappaj / (xij - d + 1)
+        Omegaj <- prior$Omega0 + SSj - nj * tcrossprod(ybarj) + 
+          prior$kappa0 * nj / kappaj * tcrossprod(ybarj - prior$mu0[j])
+        Sigmaj <- (1 + 1 / kappaj) * Omegaj / (xij - d + 1)
           
         # assign weight
-        denominator <- denominator + nj
         wts[j] <-  (prior$nu[j] + nj) * dmvt(Y[i, ], muj, Sigmaj, xij - d + 1, log = FALSE)
       }
-    dens[i] <- dens[i] +  wts[j] / denominator / nsim
+      dens[i] <- dens[i] +  sum(wts) / sum(prior$nu + sim7c$nj[k, ]) / (nsim - warmup)
     }
   }
   dens
@@ -1000,28 +1017,96 @@ Definition of prior
 ```{r}
 K <- 3
 d <- 2
-prior <- list(mu0 = matrix(rnorm(K*d, 0, 3), ncol = d), xi0 = 20, Omega0 = 20 * diag(d), kappa0 = 0.1, nu = rep(1, K))
+prior <- list(mu0 = matrix(rnorm(K*d, 0, 1), ncol = d), xi0 = 1, Omega0 = diag(d), kappa0 = 1, nu = rep(1, K))
 ```
 
 
 Running the sampler
 ```{r}
 nsim <- 100
-set.seed(110104)
+set.seed(999999)
 sim7c <- gibbs7c(nsim, simdata, prior)
 ```
 
 ```{r}
-gridY <- expand.grid(seq(-5, 5, length.out = 100), seq(-5, 5, length.out = 100))
-densY <- eval_density7c(gridY, sim7c, prior)
+resol <- 10
+x = seq(-3, 3, length.out = resol)
+y = seq(-3, 3, length.out = resol)
+grid <- data.matrix(expand.grid(x, y))
+dens <- eval_density7c(grid, sim7c, prior, warmup = 50)
 ```
 
-Let's step up the plotting game an use ggplot.
+```{r}
+z <- matrix(dens, ncol = resol)
+contour(x = x, y = y, z = z)
+points(simdata, pch = 21, bg = ground_truth)
+```
+Let's see at the estimated mean and disperion matrices of the predictive distribution in the last sample of the chain.
+
+```{r}
+k <- nsim
+for (j in 1:K) {
+  nj <- sim7c$nj[k, j]
+  sj <- sim7c$sj[k, j, ]
+  SSj <- sim7c$SSj[k, j, , ]
+  ybarj <- sj / pmax(nj, 1) 
+  kappaj <- nj + prior$kappa0
+  muj <- (nj * ybarj + prior$kappa0 * prior$mu0[j, ]) / kappaj
+  xij <- prior$xi0 + nj
+  Omegaj <- prior$Omega0 + SSj - nj * tcrossprod(ybarj) + 
+    prior$kappa0 * nj / kappaj * tcrossprod(ybarj - prior$mu0[j])
+  Sigmaj <- (1 + 1 / kappaj) * Omegaj / (xij - d + 1)
+  print(paste("component:", j))
+  print("-- mu:")
+  print(muj)
+  print("-- Sigma:")
+  print(Sigmaj)
+}
+
+```
+
+The true values of $\mu$ where
+```{r}
+print(mu_true)
+```
+
+And the covariance matrix of every component should be
+```{r}
+diag(sigma2_true, d)
+```
+
+Let's build an adjacency matrix
+
+```{r}
+adjacency7c <- function(sim, warmup = 0) {
+  n <- ncol(sim$latent)
+  nsim <- nrow(sim$latent)
+  adjacency <- matrix(0, n, n)
+  for (k in (warmup + 1):nsim) {
+    for (i in 1:(n - 1)) {
+      for (j in (i + 1):n) {
+        adjacency[i, j] <- adjacency[j, i] <- adjacency[i, j] + 
+          as.integer(sim$latent[k, i] == sim$latent[k, j]) / (nsim - warmup)
+      }
+    }
+  }
+  adjacency
+}
+```
+
+```{r}
+adjmat <- adjacency7c(sim7c, warmup = 50)
+```
+
+```{r}
+image(as(adjmat, "Matrix"), colorkey = TRUE)
+```
+
+We see that the upper left cluster was captured almost perfectly, but the cluster that are closer to each other are a little bit more mixed.
 
 [Back to Index](#TOC)
 
 ----
-
 
 
 ### Exercise 8
@@ -1043,10 +1128,13 @@ Let's step up the plotting game an use ggplot.
 
 ```{r}
 library(tidyverse)
+library(Matrix)
+library(mvtnorm)
 ```
 
 ```{r}
-mnist <- read_csv("mnist.csv", col_names = FALSE)
+mnist <- read_csv("mnist.csv", col_names = FALSE) %>% 
+  data.matrix()
 ```
 
 ```{r}
@@ -1057,19 +1145,93 @@ for (i in 1:10) {
 ```
 
 ```{r}
+mnist <- mnist[order(ground_truth), ]
+ground_truth <- sort(ground_truth)
+```
+
+```{r}
 scaled_mnist <- scale(mnist)
 scaled_mnist[is.nan(scaled_mnist)] <- 0
 ```
 
 ```{r}
-svd_output <- svd(scaled_mnist, nu = 50)
-minst_pca <- svd_output$u
+cm <- colMeans(mnist)
+csd <- apply(mnist, 2, sd)
+svd_output <- svd(scaled_mnist, nu = 50, nv = 50)
+mnist_pca <- svd_output$u
+mnist_recons <- svd_output$u %*% diag(svd_output$d[1:50]) %*% t(svd_output$v)
+for (j in 1:50) {
+  mnist_recons[ ,j] <- mnist_recons[ ,j] * csd[j] + cm[j]
+}
 ```
 
 
+Definition of prior
+```{r}
+K <- 10
+d <- 50
+prior <- list(mu0 = matrix(rnorm(K*d, 0, 0.5)), xi0 = 1, Omega0 = 1 * diag(d), kappa0 = 1, nu = rep(1, K))
+```
 
+Running the sampler
+```{r}
+nsim <- 100
+set.seed(110104)
+sim8 <- gibbs7c(nsim, mnist_pca, prior)
+```
+
+```{r}
+table(sim8$latent[nsim, ])
+```
+
+```{r}
+adjmat <- adjacency7c(sim8, warmup = nsim %/% 2)
+```
+
+```{r}
+rows <- sort(sample(nrow(mnist_pca), 100))
+image(as(adjmat[rows, rows], "Matrix"), colorkey = TRUE)
+```
 
 [Back to Index](#TOC)
+
+Visualize cluster one images from last iteration
+
+```{r}
+clust <- 5
+```
+
+```{r}
+z <- sim8$latent[nsim, ]
+clust1_sample <- sample(which(z == clust), 16)
+imsample <- matrix(0, 4 * 28, 4 * 28)
+recons <- matrix(0, 4 * 28, 4 * 28)
+for (i in 1:4) {
+  for (j in 1:4) {
+    obs <- mnist[clust1_sample[4*(i - 1) + j], ]
+    im <- matrix(obs, ncol = 28)[ ,28:1]
+    obs_recons <- mnist_recons[clust1_sample[4*(i - 1) + j], ]
+    im_recons <- matrix(obs_recons, ncol = 28)[ ,28:1]
+    recons[((i - 1)*28 + 1):(i*28),((j - 1)*28 + 1):(j*28)] <- im_recons
+    imsample[((i - 1)*28 + 1):(i*28),((j - 1)*28 + 1):(j*28)] <- im
+  }
+}
+```
+
+```{r}
+image(imsample, col = gray(0:32/32),  asp=1)
+```
+
+```{r}
+image(recons, col = gray(0:32/32),  asp=1)
+```
+
+```{r}
+recons2 <- recons
+recons2[recons2 > 1] <- 1
+recons2[recons2 < 0] <- 0
+image(recons, col = gray(0:32/32), asp=1)
+```
 
 ----
 
