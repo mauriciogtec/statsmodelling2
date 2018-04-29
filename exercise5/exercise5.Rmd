@@ -1155,11 +1155,12 @@ scaled_mnist[is.nan(scaled_mnist)] <- 0
 ```
 
 ```{r}
+ncomp <- 75
 cm <- colMeans(mnist)
 csd <- apply(mnist, 2, sd)
-svd_output <- svd(scaled_mnist, nu = 50, nv = 50)
+svd_output <- svd(scaled_mnist, nu = ncomp, nv = ncomp)
 mnist_pca <- svd_output$u
-mnist_recons <- svd_output$u %*% diag(svd_output$d[1:50]) %*% t(svd_output$v)
+mnist_recons <- svd_output$u %*% (svd_output$d[1:ncomp] * t(svd_output$v))
 for (j in 1:50) {
   mnist_recons[ ,j] <- mnist_recons[ ,j] * csd[j] + cm[j]
 }
@@ -1169,8 +1170,8 @@ for (j in 1:50) {
 Definition of prior
 ```{r}
 K <- 10
-d <- 50
-prior <- list(mu0 = matrix(rnorm(K*d, 0, 0.5)), xi0 = 1, Omega0 = 1 * diag(d), kappa0 = 1, nu = rep(1, K))
+d <- ncomp
+prior <- list(mu0 = matrix(rnorm(K*d, 0, 0.5)), xi0 = 1, Omega0 = 0.01 * diag(d), kappa0 = 1, nu = rep(1, K))
 ```
 
 Running the sampler
@@ -1190,47 +1191,59 @@ adjmat <- adjacency7c(sim8, warmup = nsim %/% 2)
 
 ```{r}
 rows <- sort(sample(nrow(mnist_pca), 100))
-image(as(adjmat[rows, rows], "Matrix"), colorkey = TRUE)
+row_order <- sort(sim8$latent[nsim, ])
+image(t(adjmat[row_order, row_order]), col = gray(0:32/32), asp = 1)
 ```
 
 [Back to Index](#TOC)
 
 Visualize cluster one images from last iteration
 
-```{r}
-clust <- 5
-```
 
 ```{r}
 z <- sim8$latent[nsim, ]
-clust1_sample <- sample(which(z == clust), 16)
-imsample <- matrix(0, 4 * 28, 4 * 28)
-recons <- matrix(0, 4 * 28, 4 * 28)
-for (i in 1:4) {
-  for (j in 1:4) {
-    obs <- mnist[clust1_sample[4*(i - 1) + j], ]
-    im <- matrix(obs, ncol = 28)[ ,28:1]
-    obs_recons <- mnist_recons[clust1_sample[4*(i - 1) + j], ]
-    im_recons <- matrix(obs_recons, ncol = 28)[ ,28:1]
-    recons[((i - 1)*28 + 1):(i*28),((j - 1)*28 + 1):(j*28)] <- im_recons
-    imsample[((i - 1)*28 + 1):(i*28),((j - 1)*28 + 1):(j*28)] <- im
+r <- 3
+c <- 3
+```
+
+```{r}
+table(z)
+```
+
+```{r}
+viz_cluster <- function(clust, z, r, c, mnist, mnist_recons) {
+  clust1_sample <- sample(which(z == clust), r * c)
+  imsample <- matrix(0, r * 28, c * 28)
+  recons <- matrix(0, r * 28, c * 28)
+  for (i in 1:r) {
+    for (j in 1:c) {
+      obs <- mnist[clust1_sample[r*(i - 1) + j], ]
+      im <- matrix(obs, ncol = 28)[ ,28:1]
+      imsample[((i - 1)*28 + 1):(i*28),((j - 1)*28 + 1):(j*28)] <- im
+      obs_recons <- mnist_recons[clust1_sample[r*(i - 1) + j], ]
+      im_recons <- matrix(obs_recons, ncol = 28)[ ,28:1]
+      recons[((i - 1)*28 + 1):(i*28),((j - 1)*28 + 1):(j*28)] <- im_recons
+    }
   }
+  par(mfrow = c(1, 2))
+  image(imsample, col = gray(0:32/32),  asp=1, main = "original")  
+  recons2 <- recons
+  recons2[recons2 > 1] <- 1
+  recons2[recons2 < 0] <- 0
+  image(recons2, col = gray(0:32/32),  asp=1, main = "pca reconstruction")
 }
 ```
 
-```{r}
-image(imsample, col = gray(0:32/32),  asp=1)
-```
+**CLUSTER 1**
 
 ```{r}
-image(recons, col = gray(0:32/32),  asp=1)
+viz_cluster(1, z, r, c, mnist, mnist_recons)
 ```
 
+**CLUSTER 4**
+
 ```{r}
-recons2 <- recons
-recons2[recons2 > 1] <- 1
-recons2[recons2 < 0] <- 0
-image(recons, col = gray(0:32/32), asp=1)
+viz_cluster(4, z, r, c, mnist, mnist_recons)
 ```
 
 ----
