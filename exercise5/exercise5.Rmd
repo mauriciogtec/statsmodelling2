@@ -595,7 +595,7 @@ $$
 
 **Strategy A.1: A collapsed sampler**
 
-Here's the modified Gibbs sampler. Tiny modifications and using a Dirichlet. As a nice bonus I'm adding a process bar.
+Here's the modified Gibbs sampler.
 
 ```{r}
 library(tidyverse)
@@ -1006,7 +1006,7 @@ eval_density7c <- function(Y, sim, prior, warmup = 0) {
         # assign weight
         wts[j] <-  (prior$nu[j] + nj) * dmvt(Y[i, ], muj, Sigmaj, xij - d + 1, log = FALSE)
       }
-      dens[i] <- dens[i] +  sum(wts) / sum(prior$nu + sim7c$nj[k, ]) / (nsim - warmup)
+      dens[i] <- dens[i] +  sum(wts) / sum(prior$nu + sim$nj[k, ]) / (nsim - warmup)
     }
   }
   dens
@@ -1104,6 +1104,173 @@ image(t(adjmat), col = gray(0:32/32))
 
 We see that the upper left cluster was captured almost perfectly, but the cluster that are closer to each other are a little bit more mixed.
 
+
+**Part C: Getting tired*
+
+The above works pretty well, but sometimes it collapses the means too often. We want to see if the less collapsed method has a slightly better performance.
+
+
+```{r}
+gibbs7d <- function(nsim, Y, prior, progress = FALSE) {
+  # meta
+  n <- nrow(Y)
+  d <- ncol(Y)
+  K <- length(prior$nu)
+  
+  # latent variables & sufficient statistics
+  latent <- matrix(0, nsim + 1, n)
+  nj <- matrix(0, nsim + 1, K)
+  sj <- array(0, c(nsim + 1, K, d))
+  SSj <- array(0, dim = c(nsim + 1, K, d, d))
+  muj <- array(0, dim = c(nsim + 1, K, d))
+  Sigmaj <- array(0, dim = c(nsim + 1, K, d, d))
+  
+  # initialise
+  latent[1, ] <- sample(1:K, size = n, replace = TRUE, prob = prior$nu)
+  for (j in 1:K) {
+    nj[1, j] <- sum(latent[1, ] == j)  
+    Yj <- Y[latent[1, ] == j, ]
+    sj[1, j, ] <- apply(Yj, 2, sum)
+    SSj[1, j, , ] <- crossprod(Yj)
+    ybarj <- sj[1, j, ] / pmax(nj[1, j], 1) 
+    kappaj <-  nj[1, j]  + prior$kappa0
+    muj_mean <- (nj[1, j] * ybarj + prior$kappa0 * prior$mu0[j, ]) / kappaj
+    xij <- prior$xi0 +  nj[1, j] 
+    Omegaj <- prior$Omega0 + SSj[1, j, , ]  - nj[1, j] * tcrossprod(ybarj) + 
+      prior$kappa0 * nj[1, j] / kappaj * tcrossprod(ybarj - prior$mu0[j])
+    Lambda <- drop(rWishart(1, xij,  solve(Omegaj)))
+    Sigmaj[1, j, , ]  <- solve(Lambda)
+    muj[1, j, ] <- rmvnorm(1, muj_mean, Sigmaj[1, j, , ] / (xij - d + 1) / kappaj)
+  }
+  
+  # sampler 
+  if(progress) pb <- progress::progress_bar$new(total = nsim)
+  for (k in 1:nsim) {
+    # update latent
+    for (i in 1:n) {
+      wts <- numeric(K)
+      for (j in 1:K) {
+        # Adjust sufficient statistics if necessary
+        nj_negi <- nj[k, j] - as.integer(latent[k, i] == j)
+        wts[j] <-  (prior$nu[j] + nj_negi) * 
+          pmin(dmvnorm(Y[i, ], muj[k, j, ], Sigmaj[k, j, , ], log = FALSE), 1)
+      }
+      if (sum(wts) == 0) wts <- rep(1, K)
+      wts <- wts + 1e-8
+      latent[k + 1, i] <- sample(1:K, size = 1, prob = wts)
+    }
+  
+    # update sufficient statistics & resample
+    for (j in 1:K) {
+      # statistics
+      nj[k + 1, j] <- sum(latent[k + 1, ] == j)  
+      if (nj[k + 1, j] > 0) {
+        Yj <- Y[latent[k + 1, ] == j, ]
+        if (nj[k + 1, j] > 1) {
+          sj[k + 1, j, ] <- apply(Yj, 2, sum)  
+          SSj[k + 1, j, , ] <- crossprod(Yj)  
+        } else {
+          sj[k + 1, j, ] <- Yj
+          SSj[k + 1, j, , ] <- matrix(0, d, d)
+        }
+      } else {
+        sj[k + 1, j, ] <- rep(0, d)
+        SSj[k + 1, j, , ] <- matrix(0, d, d)
+      }
+      
+      # parameters
+      ybarj <- sj[k + 1, j, ] / pmax(nj[k + 1, j], 1) 
+      kappaj <-  nj[k + 1]  + prior$kappa0
+      muj_mean <- (nj[k + 1] * ybarj + prior$kappa0 * prior$mu0[j, ]) / kappaj
+      xij <- prior$xi0 +  nj[k + 1, j] 
+      Omegaj <- prior$Omega0 + SSj[k + 1, j, , ]  - nj[k + 1, j] * tcrossprod(ybarj) + 
+        prior$kappa0 * nj[k + 1, j] / kappaj * tcrossprod(ybarj - prior$mu0[j])
+      Lambda <- drop(rWishart(1, xij,  solve(Omegaj)))
+      Sigmaj[k + 1, j, , ]  <- solve(Lambda)
+      muj[k + 1, j, ] <- rmvnorm(1, muj_mean, Sigmaj[k + 1, j, , ] / kappaj)
+    }
+    
+    if(progress) pb$tick()
+  }
+  
+  list(latent = latent, nj = nj, muj = muj, Sigmaj = Sigmaj)
+}
+```
+
+
+```{r}
+eval_density7d <- function(Y, sim, prior, warmup = 0) {
+  nsim <- nrow(sim$latent)
+  n <- nrow(Y)
+  d <- ncol(Y)
+  K <- length(prior$nu)
+  
+  dens <- numeric(n)
+  for (k in (warmup + 1):nsim) {
+    for (i in 1:n) {
+      wts <- numeric(K)
+      for (j in 1:K) { 
+        # Adjust sufficient statistics if necessary
+        nj <- sim$nj[k, j]
+        muj <- sim$muj[k, j, ]
+        Sigmaj <- sim$Sigmaj[k, j, , ]
+        wts[j] <-  (prior$nu[j] + nj) * dmvnorm(Y[i, ], muj, Sigmaj, log = FALSE)
+      }
+      dens[i] <- dens[i] +  sum(wts) / sum(prior$nu + sim$nj[k, ]) / (nsim - warmup)
+    }
+  }
+  dens
+}
+```
+
+```{r}
+adjacency7d <- adjacency7c
+```
+
+
+Running the sampler
+```{r}
+nsim <- 100
+set.seed(999999)
+sim7d <- gibbs7d(nsim, simdata, prior)
+```
+
+```{r}
+resol <- 10
+x = seq(-3, 3, length.out = resol)
+y = seq(-3, 3, length.out = resol)
+grid <- data.matrix(expand.grid(x, y))
+dens <- eval_density7d(grid, sim7d, prior, warmup = 50)
+```
+
+```{r}
+z <- matrix(dens, ncol = resol)
+contour(x = x, y = y, z = z)
+points(simdata, pch = 21, bg = ground_truth)
+```
+
+```{r}
+adjmat <- adjacency7c(sim7d, warmup = 50)
+```
+
+```{r}
+image(t(adjmat), col = gray(0:32/32))
+```
+
+We see that this algorithm has by far the best performance!
+
+```{r}
+k <- nsim
+for (j in 1:K) {
+  print(paste("component:", j))
+  print("-- mu:")
+  print(sim7d$muj[k, j, ])
+  print("-- Sigma:")
+  print(sim7d$Sigmaj[k, j, , ])
+}
+
+```
+
 [Back to Index](#TOC)
 
 ----
@@ -1166,12 +1333,13 @@ for (j in 1:50) {
 }
 ```
 
+**PART A: MODEL 1 (WITH MEANS AND VARIANCES)**
 
 Definition of prior
 ```{r}
 K <- 10
 d <- ncomp
-prior <- list(mu0 = matrix(rnorm(K*d, 0, 0.5)), xi0 = 1, Omega0 = 0.01 * diag(d), kappa0 = 1, nu = rep(1, K))
+prior <- list(mu0 = matrix(rnorm(K*d, 0, 0.5)), xi0 = d + 1, Omega0 = 0.01 * diag(d), kappa0 = 1, nu = rep(1, K))
 ```
 
 Running the sampler
@@ -1195,7 +1363,6 @@ row_order <- sort(sim8$latent[nsim, ])
 image(t(adjmat[row_order, row_order]), col = gray(0:32/32), asp = 1)
 ```
 
-[Back to Index](#TOC)
 
 Visualize cluster one images from last iteration
 
@@ -1245,6 +1412,86 @@ viz_cluster(1, z, r, c, mnist, mnist_recons)
 ```{r}
 viz_cluster(4, z, r, c, mnist, mnist_recons)
 ```
+
+**PART B: MODEL 2 (WITH MEANS AND VARIANCES)**
+
+Let's try this again with the semi-collapsed method that work much better for the previous exercise.
+
+Running the sampler
+
+```{r}
+K <- 10
+d <- ncomp
+prior <- list(mu0 = matrix(rnorm(K*d, 0, 0.5)), xi0 = d + 1, Omega0 = 0.1 * diag(d), kappa0 = 1, nu = rep(1, K))
+```
+
+```{r}
+set.seed(110104)
+nsim <- 100
+sim8b <- gibbs7d(nsim, mnist_pca, prior)
+```
+
+```{r}
+table(sim8b$latent[nsim, ])
+```
+
+```{r}
+adjmat <- adjacency7d(sim8b, warmup = nsim %/% 2)
+```
+
+```{r}
+rows <- sort(sample(nrow(mnist_pca), 100))
+row_order <- sort(sim8b$latent[nsim, ])
+image(t(adjmat[row_order, row_order]), col = gray(0:32/32), asp = 1)
+```
+
+```{r}
+z <- sim8b$latent[nsim, ]
+r <- 3
+c <- 3
+```
+
+
+```{r}
+viz_cluster <- function(clust, z, r, c, mnist, mnist_recons) {
+  clust1_sample <- sample(which(z == clust), r * c)
+  imsample <- matrix(0, r * 28, c * 28)
+  recons <- matrix(0, r * 28, c * 28)
+  for (i in 1:r) {
+    for (j in 1:c) {
+      obs <- mnist[clust1_sample[r*(i - 1) + j], ]
+      im <- matrix(obs, ncol = 28)[ ,28:1]
+      imsample[((i - 1)*28 + 1):(i*28),((j - 1)*28 + 1):(j*28)] <- im
+      obs_recons <- mnist_recons[clust1_sample[r*(i - 1) + j], ]
+      im_recons <- matrix(obs_recons, ncol = 28)[ ,28:1]
+      recons[((i - 1)*28 + 1):(i*28),((j - 1)*28 + 1):(j*28)] <- im_recons
+    }
+  }
+  par(mfrow = c(1, 2))
+  image(imsample, col = gray(0:32/32),  asp=1, main = "original")  
+  recons2 <- recons
+  recons2[recons2 > 1] <- 1
+  recons2[recons2 < 0] <- 0
+  image(recons2, col = gray(0:32/32),  asp=1, main = "pca reconstruction")
+}
+```
+
+**CLUSTER 6**
+
+```{r}
+viz_cluster(6, z, r, c, mnist, mnist_recons)
+```
+
+
+**CLUSTER 7**
+
+```{r}
+viz_cluster(7, z, r, c, mnist, mnist_recons)
+```
+
+ 
+
+[Back to Index](#TOC)
 
 ----
 
