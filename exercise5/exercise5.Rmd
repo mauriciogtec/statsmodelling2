@@ -1099,7 +1099,7 @@ adjmat <- adjacency7c(sim7c, warmup = 50)
 ```
 
 ```{r}
-image(as(adjmat, "Matrix"), colorkey = TRUE)
+image(t(adjmat), col = gray(0:32/32))
 ```
 
 We see that the upper left cluster was captured almost perfectly, but the cluster that are closer to each other are a little bit more mixed.
