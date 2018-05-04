@@ -1,0 +1,86 @@
+---
+title: 'Statistical Modelling II'
+author: 'Mauricio Garcia Tec'
+output: 
+  html_notebook: 
+    toc: yes
+---
+
+$$
+\DeclareMathOperator{\N}{N}
+\DeclareMathOperator{\Gam}{Gamma}
+\DeclareMathOperator{\Wish}{Wishart}
+\DeclareMathOperator{\tr}{tr}
+\DeclareMathOperator{\Po}{Poisson}
+\DeclareMathOperator{\Prob}{P}
+\newcommand{\D}[1]{\mathrm{#1}}
+$$
+
+[Return to main Index](https://github.com/mauriciogtec/statsmodelling2)
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message = FALSE, warning = FALSE)
+```
+
+
+# Section 4: Gaussian Processes
+
+## Non-linear functions
+
+### Regression view
+
+So far, we've assumed our latent function is a linear function of our data -- which is obviously limiting. One way of circumventing this is to project our inputs into some high-dimensional space using a set of basis functions $\phi:\mathbb{R}^d\rightarrow \mathbb{R}^N$, and then performing linear regression in that space, so that
+
+$$y_i = \phi(x)^T\beta + \epsilon_i$$
+
+For example, we could project $x$ into the space of powers of $x$, i.e. $\phi(x) = (1,x,x^2,x^3\dots)$ to obtain polynomial regression.
+
+### Exercise 1
+
+*Let $\mathbf{y}$ and $\mathbf{X}$ be set of observations and corresponding covariates, and $y_*$ be the unknown value we wish to predict at covariate $\mathbf{x}_*$.  Assume that
+  $$\begin{aligned}
+    \beta \sim& \mbox{N}\left(0,\Sigma\right)\\
+    \begin{bmatrix}f_* \\ \mathbf{f}\end{bmatrix} =& \begin{bmatrix}\boldsymbol{\phi}_*^T\\ \boldsymbol{\Phi}\end{bmatrix}\beta\\
+      \begin{bmatrix}y_* \\ \mathbf{y}\end{bmatrix} \sim& \mbox{N}\left(\begin{bmatrix}f_* \\ \mathbf{f}\end{bmatrix},\sigma^2\mathbf{I}\right)
+      \end{aligned}$$
+  where $\boldsymbol{\phi}:=\phi(\mathbf{x})$ and $\boldsymbol{\Phi}:=\phi(\mathbf{X})$.
+  What is the predictive distribution $p(f_*|\mathbf{y},\mathbf{x}_*,\mathbf{X})$? Note: this is very similar to questions we did in Section 1.*
+ 
+*Solution*. Out model matrix is $\Phi$ and the new point is $\phi_*$, we can ignore the $X$ notation. The posterior predictive distribution from a linear regression is
+$$
+p(\beta \mid y, \Phi)  = N\left(\beta \;\bigg\vert\; (\Phi'\Phi + \sigma^2\Sigma^{-1})^{-1}\Phi'y, \frac{1}{\sigma^2}(\Phi'\Phi + \Sigma^{-1})^{-1}\right)
+$$
+Note that $f_* = \phi_* \beta$. Hence $f_*$ is also Gaussian and
+
+$$
+E(f_* \mid y, \Phi, \phi_*) = \phi_*'(\Phi'\Phi + \sigma^2\Sigma^{-1})^{-1}\Phi'y
+$$
+and
+$$
+\mathrm{Var}(f_* \mid y, \Phi, \phi_*) = \frac{1}{\sigma^2}\phi_*'(\Phi'\Phi + \sigma^2\Sigma^{-1})^{-1}\phi_*
+$$
+
+[Back to Index](#TOC)
+
+Note that, in the solution to Exercise 1, we only ever see $\phi$ or $\Phi$ in a form such as $\Phi^T\Sigma\Phi$. We will define $k(\mathbf{x},\mathbf{x}') = \phi(\mathbf{x})^T\Sigma\phi(\mathbf{x}')$. Since $\Sigma$ is positive definite, we can write:
+
+$$k(\mathbf{x},\mathbf{x}') = \psi(\mathbf{x})^T\psi(\mathbf{x})$$
+where $\psi(\mathbf{x}) = \phi(\mathbf{x})\Sigma^{1/2}$
+
+If (as here) we only ever access $\psi$ via this inner product, we can choose to work instead with $k(\cdot,\cdot)$. This may be very convenient if the dimensionality of $\psi(x)$ is very high (or even infinite... see later). $k(\cdot,\cdot)$ is often refered to as the kernel, and this replacement is referred to as the kernel trick.
+
+### Exercise 2
+
+Let's look at a concrete example, using the old faithful dataset on $R$
+
+* `data("faithful",package="datasets")` in R
+* or available as `faithful.csv` on github if you're not using R.
+\end{itemize}
+
+Let $\phi(x) = (1,x,x^2,x^3)$. Using appropriate priors on $\beta$ and $\sigma^2$, obtain a posterior distribution over $f:=\phi(x)^T\beta$. Plot the function (with a 95% credible interval) by evaluating this on a grid of values.
+  
+  
+  
+
+
+----
