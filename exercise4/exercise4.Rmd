@@ -57,7 +57,7 @@ E(f_* \mid y, \Phi, \phi_*) = \phi_*'(\Phi'\Phi + \sigma^2\Sigma^{-1})^{-1}\Phi'
 $$
 and
 $$
-\mathrm{Var}(f_* \mid y, \Phi, \phi_*) = \frac{1}{\sigma^2}\phi_*'(\Phi'\Phi + \sigma^2\Sigma^{-1})^{-1}\phi_*
+\mathrm{Var}(f_* \mid y, \Phi, \phi_*) = \sigma^2\phi_*'(\Phi'\Phi + \sigma^2\Sigma^{-1})^{-1}\phi_*
 $$
 
 [Back to Index](#TOC)
