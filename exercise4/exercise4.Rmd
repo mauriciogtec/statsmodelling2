@@ -13,6 +13,7 @@ $$
 \DeclareMathOperator{\tr}{tr}
 \DeclareMathOperator{\Po}{Poisson}
 \DeclareMathOperator{\Prob}{P}
+\DeclareMathOperator{\cov}{Cov}
 \newcommand{\D}[1]{\mathrm{#1}}
 $$
 
@@ -79,8 +80,153 @@ Let's look at a concrete example, using the old faithful dataset on $R$
 
 Let $\phi(x) = (1,x,x^2,x^3)$. Using appropriate priors on $\beta$ and $\sigma^2$, obtain a posterior distribution over $f:=\phi(x)^T\beta$. Plot the function (with a 95% credible interval) by evaluating this on a grid of values.
   
+```{r}
+library(rstan)
+library(tidyverse)
+```
   
-  
+```{r}
+data("faithful",package="datasets")
 
+```
+
+```{r}
+X <- faithful$waiting
+y <- faithful$eruptions
+Phi <- faithful %>% 
+  model.matrix(~ waiting + I(waiting^2 )+ I(waiting^3), data = .)
+```
+
+Here's the code for a standard regression
+
+```{r}
+stan2_code <- '
+data {
+  int<lower=0> N;
+  int<lower=0> D;
+  matrix[N, D] X;
+  vector[N] y;
+  real<lower=0> kappa;
+  real<lower=0> a;
+  real<lower=0> b;
+  int<lower=0> N_grid;
+  matrix[N_grid, D] X_grid;
+}
+parameters {
+  vector[D] beta;
+  real<lower=0> sigma2;
+}
+transformed parameters {
+  vector[N] mu;
+  mu = X * beta;
+}
+model {
+  sigma2 ~ inv_gamma(a, b);
+  beta ~ normal(0, sqrt(sigma2 / kappa));
+  for (i in 1:N) 
+    y[i] ~ normal(mu, sqrt(sigma2));
+}
+generated quantities {
+  vector[N_grid] mu_grid;
+  mu_grid = X_grid * beta;
+}
+'
+```
+
+```{r}
+stan2 <- stan_model(model_code = stan2_code)
+```
+
+Create a grid 
+
+```{r}
+summary(faithful$waiting)
+```
+
+```{r}
+N_grid <- 100
+m <- min(faithful$waiting)
+M <- max(faithful$waiting)
+Phi_grid <- data.frame(waiting = seq(m, M, length.out = N_grid)) %>% 
+   model.matrix(~ waiting + I(waiting^2 )+ I(waiting^3), data = .)
+```
+
+
+```{r}
+standat2 <- list(
+  N = nrow(Phi),
+  D = ncol(Phi),
+  X = Phi,
+  y = y,
+  a = 1.,
+  b = 10,
+  kappa = 0.1,
+  N_grid = N_grid,
+  X_grid = Phi_grid)
+```
+
+```{r}
+fit2 <- sampling(
+  stan2, 
+  data = standat2,
+  iter = 1000,
+  chains = 4,
+  pars = c("beta", "sigma2", "mu_grid"),
+  cores = 4)
+```
+
+This model seems to behabe badly in terms of stability of the parameters (see below). Most likely the behaviour we see is a consequence of the bimodality. I'll combine estimates from chains.
+
+```{r}
+rstan::traceplot(fit2, pars = 'beta')
+```
+
+[Back to Index](#TOC)
+
+----
+
+
+
+### Function space view
+
+Look back at the plot from Exercise 2. We specified a prior distribution over regression parameters, which we can use to obtain a posterior distribution over those regression parameters. But, what we calculated (and plotted) was a posterior distribution over *functions*. Similarly, we can think of our prior on $\beta$ as specifying a prior distribution on the space of cubic functions. Evaluated at a finite number of input locations -- as you did in Exercise 2 -- this posterior distribution is multivariate Gaussian. This is in fact the definition of a Gaussian process: A distribution over functions, such that the marginal distribution evaluated at any finite set of points is multivariate Gaussian.
+
+A priori, the  covariance of $f$ is given by $$\cov(x,x') = E[(f(x)-m(x))(f(x^T)-m(x^T))] = k(x,x')$$. For this reason, our kernel $k$ is often referred to as the covariance function (note, it is a function since we can evaluate it for any pairs $x,x'$). In the above example, where $\beta$ had zero mean, the mean of $f$ is zero; more generally, we will assume some mean function $m(x)$.
+
+Rather than putting a prior distribution over $\beta$, we can specify a covariance function -- remember that our covariance function can be written in terms of the prior covariance of $\beta$.  For example, we might let
+
+$$k(x,x') = \alpha^2\exp\left\{-\frac{1}{2\ell^2}|x-x'|^2\right\}$$
+ -- this is known as a squared exponential covariance function, for obvious reasons. This prior encodes the following assumptions:
+
+* The covariance between two datapoints decreases monotonically as the distance between them increases.
+* The covariance function is stationary -- it only depends on the distance between $x$ and $x'$, not their locations.
+* Even more than being stationary, it is isotropic: It depends only on $|x-x'|$.
+
+
+### Exercise 3
+
+*Let's explore the resulting distribution over functions. Write some code to sample from a Gaussian process prior with squared exponential covariance function, evaluated on a grid of 200 inputs between 0 and 100. For $\ell=1$, sample 5 functions and plot them on the same plot. Repeat for $\ell=0.1$ and $\ell=10$. Why do we call $\ell$ the lengthscale of the kernel?*
+
+
+
+[Back to Index](#TOC)
+
+----
+
+### Exercise 4
+
+  Let $\mathbf{f}_*:=f(\mathbf{X}_*)$ be the function $f$ evaluated at test covariate locations $\mathbf{X}_*$. Derive the posterior distribution $p(\mathbf{f}_*|\mathbf{X}_*,\mathbf{X},\mathbf{y})$, where $\mathbf{y}$ and $\mathbf{X}$ comprise our training set. (You can start from the answer to Exercise 1 if you'd like).
+
+
+[Back to Index](#TOC)
+
+----
+
+\begin{exercise}
+Return to the faithful dataset. Evaluate the posterior predictive distribution 
+$p(\mathbf{f}_*|\mathbf{X}_*,\mathbf{X},\mathbf{y})$, for some reasonable choices of parameters (perhaps explore a few length scales if you're not sure what to pick), and plot the posterior mean plus a 95\% credible interval on a grid of 200 inputs between 0 and 100, overlaying the actual data.
+\end{exercise}
+
+[Back to Index](#TOC)
 
 ----
