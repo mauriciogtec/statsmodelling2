@@ -41,25 +41,48 @@ For example, we could project $x$ into the space of powers of $x$, i.e. $\phi(x)
 *Let $\mathbf{y}$ and $\mathbf{X}$ be set of observations and corresponding covariates, and $y_*$ be the unknown value we wish to predict at covariate $\mathbf{x}_*$.  Assume that
   $$\begin{aligned}
     \beta \sim& \mbox{N}\left(0,\Sigma\right)\\
-    \begin{bmatrix}f_* \\ \mathbf{f}\end{bmatrix} =& \begin{bmatrix}\boldsymbol{\phi}_*^T\\ \boldsymbol{\Phi}\end{bmatrix}\beta\\
+    \begin{bmatrix}f_* \\ \mathbf{f}\end{bmatrix} =& \begin{bmatrix}\boldsymbol{\phi}_*'\\ \boldsymbol{\Phi'}\end{bmatrix}\beta\\
       \begin{bmatrix}y_* \\ \mathbf{y}\end{bmatrix} \sim& \mbox{N}\left(\begin{bmatrix}f_* \\ \mathbf{f}\end{bmatrix},\sigma^2\mathbf{I}\right)
       \end{aligned}$$
   where $\boldsymbol{\phi}:=\phi(\mathbf{x})$ and $\boldsymbol{\Phi}:=\phi(\mathbf{X})$.
   What is the predictive distribution $p(f_*|\mathbf{y},\mathbf{x}_*,\mathbf{X})$? Note: this is very similar to questions we did in Section 1.*
  
-*Solution*. Out model matrix is $\Phi$ and the new point is $\phi_*$, we can ignore the $X$ notation. The posterior predictive distribution from a linear regression is
+*Solution*. Out model matrix is $\Phi'$ and the new point is $\phi_*$, we can ignore the $X$ notation. The posterior predictive distribution from a linear regression is
 $$
-p(\beta \mid y, \Phi)  = N\left(\beta \;\bigg\vert\; (\Phi'\Phi + \sigma^2\Sigma^{-1})^{-1}\Phi'y, \frac{1}{\sigma^2}(\Phi'\Phi + \Sigma^{-1})^{-1}\right)
+p(\beta \mid y, \Phi)  = N\left(\beta \;\bigg\vert\; (\Phi\Phi' + \sigma^2\Sigma^{-1})^{-1}\Phi y, \frac{1}{\sigma^2}(\Phi \Phi' + \Sigma^{-1})^{-1}\right)
 $$
 Note that $f_* = \phi_* \beta$. Hence $f_*$ is also Gaussian and
 
 $$
-E(f_* \mid y, \Phi, \phi_*) = \phi_*'(\Phi'\Phi + \sigma^2\Sigma^{-1})^{-1}\Phi'y
+E(f_* \mid y, \Phi, \phi_*) = \phi_*'(\Phi'\Phi + \sigma^2\Sigma^{-1})^{-1}\Phi y
 $$
 and
 $$
-\mathrm{Var}(f_* \mid y, \Phi, \phi_*) = \sigma^2\phi_*'(\Phi'\Phi + \sigma^2\Sigma^{-1})^{-1}\phi_*
+\mathrm{Var}(f_* \mid y, \Phi, \phi_*) = \sigma^2\phi_*'(\Phi\Phi' + \sigma^2\Sigma^{-1})^{-1}\phi_*
 $$
+
+In anticipation of the next questions, we want to write everything only in terms of inner-products. Define $K = \Phi'\Sigma\Phi$ and $A = \Phi\Phi' + \sigma^2\Sigma^{-1}$, then
+
+$$
+A\Sigma\Phi =(\Phi\Phi' + \sigma^2\Sigma^{-1})\Sigma\Phi = \Phi(\Phi'\Sigma\Phi + \sigma^2 I) = \Phi(K + \sigma^2 I)
+$$
+ao $A^{-1}\Phi =\Sigma \Phi (K + \sigma^2 I)^{-1}$. Thus we can rewrite
+$$
+E(f_* \mid y, \Phi, \phi_*)  = \phi_*'\Sigma \Phi (K + \sigma^2I)^{-1}y
+$$
+To fix an expression for the variance we will use the Sherman–Morrison–Woodbury matrix inversion formula
+$$
+(B + UCV)^{-1} = B^{-1} - B^{-1}U(VB^{-1}U C)^{-1}VB^{-1}
+$$
+Take $B= \sigma^2\Sigma^{-1}$, $U = \Phi$, $V =\Phi'$ and $C = I$. Then
+$$
+A^{-1} = (B + UCV)^{-1} = \frac{1}{\sigma^2}\Sigma -  \frac{1}{\sigma^2}\Sigma\Phi(K + \sigma^2 I)^{-1}\Phi'\Sigma.
+$$
+So plugging that back into the variance we get
+$$
+\mathrm{Var}(f_* \mid y, \Phi, \phi_*)  = =\phi_*'\Sigma\phi_* -  \phi_*'\Sigma\Phi(K + \sigma^2 I)^{-1}\Phi'\Sigma\phi_*.
+$$
+
 
 [Back to Index](#TOC)
 
@@ -83,18 +106,19 @@ Let $\phi(x) = (1,x,x^2,x^3)$. Using appropriate priors on $\beta$ and $\sigma^2
 ```{r}
 library(rstan)
 library(tidyverse)
+library(ggplot2)
 ```
   
 ```{r}
 data("faithful",package="datasets")
-
 ```
 
 ```{r}
 X <- faithful$waiting
 y <- faithful$eruptions
 Phi <- faithful %>% 
-  model.matrix(~ waiting + I(waiting^2 )+ I(waiting^3), data = .)
+  model.matrix(~ waiting + I(waiting^2 )+ I(waiting^3), data = .) 
+Phi[ ,-1] <- scale(Phi[ ,-1])
 ```
 
 Here's the code for a standard regression
@@ -124,7 +148,7 @@ model {
   sigma2 ~ inv_gamma(a, b);
   beta ~ normal(0, sqrt(sigma2 / kappa));
   for (i in 1:N) 
-    y[i] ~ normal(mu, sqrt(sigma2));
+    y[i] ~ normal(mu[i], sqrt(sigma2));
 }
 generated quantities {
   vector[N_grid] mu_grid;
@@ -149,11 +173,12 @@ m <- min(faithful$waiting)
 M <- max(faithful$waiting)
 Phi_grid <- data.frame(waiting = seq(m, M, length.out = N_grid)) %>% 
    model.matrix(~ waiting + I(waiting^2 )+ I(waiting^3), data = .)
+Phi_grid[ ,-1] <- scale(Phi_grid[ ,-1])
 ```
 
 
 ```{r}
-standat2 <- list(
+standata2 <- list(
   N = nrow(Phi),
   D = ncol(Phi),
   X = Phi,
@@ -168,14 +193,14 @@ standat2 <- list(
 ```{r}
 fit2 <- sampling(
   stan2, 
-  data = standat2,
+  data = standata2,
   iter = 1000,
   chains = 4,
   pars = c("beta", "sigma2", "mu_grid"),
   cores = 4)
 ```
 
-This model seems to behabe badly in terms of stability of the parameters (see below). Most likely the behaviour we see is a consequence of the bimodality. I'll combine estimates from chains.
+The chains are pretty stationary.
 
 ```{r}
 rstan::traceplot(fit2, pars = 'beta')
@@ -184,6 +209,27 @@ rstan::traceplot(fit2, pars = 'beta')
 [Back to Index](#TOC)
 
 ----
+
+```{r}
+fpred <- rstan::extract(fit2, "mu_grid")[[1]]
+```
+
+```{r}
+fdata <- data.frame(
+  waiting = seq(m, M, length.out = N_grid),
+  mean = colMeans(fpred),
+  low95 = apply(fpred, 2, quantile, 0.025),
+  up95 = apply(fpred, 2, quantile, 0.975)
+)
+```
+
+```{r}
+ggplot() +
+  geom_line(aes(x = waiting, y = mean), data = fdata) +
+  geom_ribbon(aes(x = waiting, ymin = low95, ymax = up95), alpha = 0.3, data = fdata) +
+  geom_point(aes(x = waiting, y = eruptions), col = "blue", data = faithful) +
+  ylab("eruptions") + ggtitle("Cubic polynomial fit")
+```
 
 
 
@@ -207,7 +253,52 @@ $$k(x,x') = \alpha^2\exp\left\{-\frac{1}{2\ell^2}|x-x'|^2\right\}$$
 
 *Let's explore the resulting distribution over functions. Write some code to sample from a Gaussian process prior with squared exponential covariance function, evaluated on a grid of 200 inputs between 0 and 100. For $\ell=1$, sample 5 functions and plot them on the same plot. Repeat for $\ell=0.1$ and $\ell=10$. Why do we call $\ell$ the lengthscale of the kernel?*
 
+```{r}
+library(mvtnorm)
+```
 
+```{r}
+gp <- function(x, l) {
+  n <- length(x)
+  K <- matrix(0, n, n)
+  for (i in 1:(n-1)) {
+    for (j in (i:1):n) {
+      K[i, j] <- K[j, i] <- (x[i] - x[j])^2
+    }
+  }
+  K <- exp(-0.5 * K / l^2)  
+  drop(rmvnorm(1, sigma = K))
+}
+
+```
+
+```{r}
+plot_gpsamples <- function(k, x, l) {
+  plt_data <- map(1:k, ~ data.frame(x = x, f = gp(x, l), iter = .)) %>% 
+    bind_rows()
+  plt_data$iter <- ordered(plt_data$iter, levels = 1:k)
+  ggplot(plt_data, aes(x = x, y = f, colour = iter)) +
+    geom_line() +
+    labs(title = paste("GP priors with exponential kernel l =", l))
+}
+```
+
+```{r}
+x <- seq(0, 100, length.out = 200)
+```
+
+```{r}
+plot_gpsamples(k = 5, x = x, l = 1)
+```
+
+```{r}
+plot_gpsamples(k = 5, x = x, l = 10)
+```
+
+
+```{r}
+plot_gpsamples(k = 5, x = x, l = 0.1)
+```
 
 
 [Back to Index](#TOC)
@@ -218,8 +309,18 @@ $$k(x,x') = \alpha^2\exp\left\{-\frac{1}{2\ell^2}|x-x'|^2\right\}$$
 
 *Let $\mathbf{f}_*:=f(\mathbf{X}_*)$ be the function $f$ evaluated at test covariate locations $\mathbf{X}_*$. Derive the posterior distribution $p(\mathbf{f}_*|\mathbf{X}_*,\mathbf{X},\mathbf{y})$, where $\mathbf{y}$ and $\mathbf{X}$ comprise our training set. (You can start from the answer to Exercise 1 if you'd like).*
 
+*Solution*. With the techniques we developed in exercise 1, we can easily conclude that
+$$
+\begin{pmatrix} f_* \\ y\end{pmatrix} \sim N\left(\begin{pmatrix} 0 \\ 0\end{pmatrix}, \begin{pmatrix}K_{**}  & K_{*x} \\
+K_{x*} & K_{xx} + \sigma^2 I \end{pmatrix}\right)
+$$
+with $K_{x*} = K_{*x}'$. The last expression in our solution in terms of $K$ is equivalent to
+$$
+f_* \mid y, X, x_* \sim N\left(K_{*x}(K_{xx} + \sigma^2I)^{-1}y, K_{**} - K_{*x}(K_{xx} + \sigma^2I)^{-1}K_{x*} \right)
+$$
 
 [Back to Index](#TOC)
+
 
 ----
 
@@ -228,6 +329,145 @@ $$k(x,x') = \alpha^2\exp\left\{-\frac{1}{2\ell^2}|x-x'|^2\right\}$$
 *Return to the faithful dataset. Evaluate the posterior predictive distribution 
 $p(\mathbf{f}_*|\mathbf{X}_*,\mathbf{X},\mathbf{y})$, for some reasonable choices of parameters (perhaps explore a few length scales if you're not sure what to pick), and plot the posterior mean plus a 95\% credible interval on a grid of 200 inputs between 0 and 100, overlaying the actual data.*
 
+  
+```{r}
+library(rstan)
+library(tidyverse)
+library(ggplot2)
+library(Matrix)
+library(mvtnorm)
+library(ggplot2)
+data("faithful",package="datasets")
+```
+  
+
+```{r}
+x <- faithful$waiting
+y <- faithful$eruptions
+m <- min(x)
+M <- max(x)
+xs <- seq(m, M, length.out = 200)
+```
+
+
+```{r}
+kernel_exp5 <- function(x1, x2, l, alpha) {
+  n <- length(x1)
+  m <- length(x2)
+  K <- matrix(0, n, m)
+  for (i in 1:n) {
+    for (j in 1:m) {
+      K[i, j] <-(x1[i] - x2[j])^2
+    }
+  }
+  K <- alpha^2 * exp(-0.5 * K / l^2)  
+  drop(K)
+}
+```
+
+```{r}
+gp_posterior5 <- function(xs, y, x, sigma2, l, alpha) {
+  n <- length(xs)
+  m <- length(x)
+  means <- numeric(n)
+  low95 <- numeric(n)
+  up95 <- numeric(n)
+  A <- kernel_exp5(x, x, l, alpha) + sigma2 * Diagonal(m)
+  K_xs <- kernel_exp5(x, xs, l, alpha)
+  for (i in 1:n) {
+    K_ss <- alpha^2
+    m <- drop(crossprod(K_xs[, i], solve(A, y)))
+    s2 <- K_ss - drop(crossprod(K_xs[, i], solve(A, K_xs[, i])))
+    means[i] <- m
+    low95[i] <- qnorm(0.025, mean = m, sd = sqrt(s2))
+    up95[i] <- qnorm(0.975, mean = m, sd = sqrt(s2))
+  }
+  data.frame(x = xs, f = means, low95 = low95, up95 = up95)
+}
+```
+
+```{r}
+sigma2 <- 1. # It cancels out here
+l <- 10
+alpha <- 1.
+res5 <- gp_posterior5(xs, y, x, sigma2, l, alpha)
+```
+
+```{r}
+ggplot() +
+  geom_point(aes(x = waiting, y = eruptions), col = "blue", data = faithful) +
+  geom_line(aes(x = xs, y = f, colour = "mean"), size = 1, data = res5) +
+  geom_ribbon(aes(x = xs, ymin = low95, ymax = up95, fill = "95% interval"), alpha = 0.3, data = res5) +
+  scale_fill_manual("", values="grey12") +
+  labs(title = "Posterior distribution of the mean")
+```
+
+
 [Back to Index](#TOC)
 
 ----
+
+
+## Parameter Estimation
+
+
+As we saw in the previous section, the choice of hyperparameters (for the squared exponential case, the length scale $\ell$) effects the properties of the resulting function. Rather than pick a specific value for the hyperparameter, we can specify the model in a hierarchical manner---just like we did in the linear case.
+
+For example, in the squared exponential setting, we could specify our model as
+
+$$\begin{aligned}
+  \ell^2 \sim& \mbox{Inv-Gamma}(a_\ell, b_\ell)\\
+  \alpha^2 \sim& \mbox{Inv-Gamma}(a_\alpha, b_\alpha)\\
+  \sigma^2 \sim& \mbox{Inv-Gamma}(a_\sigma, b_\sigma)\\
+  k(x,x') =& \alpha^2\exp\left\{-\frac{1}{2\ell^2}|x-x'|^2\right\}+\sigma^2\delta_{x-x'}\\
+  y|X \sim& N(0,\tilde{K})
+\end{aligned}
+$$
+where $K$ is the covariance function evaluated at the input locations $X$. Note that we have integrated out $f$ and placed our prior directly on $y$, incorporating the Gaussian likelihood into the covariance. We can then infer the posterior distribution over $\ell$ using Bayes' Law:
+
+ $$p(\ell|y,X) = \frac{p(y|X,\ell)p(\ell)}{\int_0^\infty p(y|X,\ell)p(\ell)d\ell}$$
+
+ Unfortunately, we typically do not have an analytical form for this posterior, so we must resort to either optimization, or MCMC-based inference.
+
+### Optimization
+
+ In practice, a common approach is to find the ML estimate for the hyperparameters. Let's assume a generic setting, where the log likelihood is parametrized by some vector of parameters $\theta$. The log likelihood is given by
+
+ $$log p(y|X,\theta) = -\frac{1}{2}y^TK^{-1}y - \frac{1}{2}\log|K|-\frac{n}{2}\log 2 \pi$$
+
+ Taking partial derivatives, we see that
+
+ $$\begin{aligned}\frac{\partial}{d\partial \theta_j} \log p(y|X,\theta) =& \frac{1}{2}y^TK^{-1}\frac{\partial K}{\partial \theta_j} K^{-1}y - \frac{1}{2}\mbox{tr}\left(K^{-1}\frac{\partial K}{\partial \theta_j}\right)\\
+   =& \frac{1}{2}\mbox{tr}\left((\alpha \alpha^T - K^{-1})\frac{\delta K}{\delta \theta_j}\right)\end{aligned}
+ $$
+ where $\alpha = K^{-1}y$. We can use these partial derivatives to find the ML estimate of $\theta$, using a gradient-based optimization method
+
+
+### Exercise 6
+
+*Calculate the appropriate derivatives for the one-dimensional, squared exponential case used for the \texttt{faithful} dataset. Use these gradient to find the optimizing value of $\ell^2$, $\alpha^2$ and $\sigma^2$. Plot the resulting fit.*
+
+*Solution*. 
+
+
+### Exercise 7
+
+*Repeat the previous exercise, but this time only use the first 10 data points from the faithful dataset. Repeat the optimization several times, using different initializations/random seeds. You will likely see widely different results -- sometimes $\ell$ is big, sometimes $\sigma^2$ is big. Why is this? Discuss why this is a problem here, but wasn't in the previous setting. You may find it helpful to look at the corresponding scatter plot, or plot the log likelihood for certain values of $\sigma^2$ and $\ell$.*
+ 
+ 
+### MCMC
+ Optimization is typically pretty quick, which is why it is commonly used in practice. However, we have no guarantee that our optimization surface is convex. An alternative approach is to sample from the posterior distribution over our hyperparameters.
+
+
+### Exercise 8
+
+*Since the posterior is non-conjugate, we can't use a Gibbs sampler. We won't go into the details of appropriate sampling methods since this isn't an MCMC course, but we will explore using black-box samplers. In the R folder, there are three files: `faithful\_data.R`, `gp\_regression.stan` and `run\_gp\_regression.R`. Use these to sample from the model and produce 95% credible intervals for $\alpha$, $\ell$ and $\sigma$, and 95% predictive intervals for $t$. Go through the code and make sure you understand what is going on.*
+
+ 
+### Exercise 9
+
+*Let's now look at a dataset with multiple predictors. Download the dataset weather.csv -- this contains latitude and longitude data for 147 weather stations, plus a response ``temperature'', which is the difference between the forecasted and actual temperature for each station.*
+
+*How should we extend our kernel to multiple dimensions? (There is more than one option here). Should we use the same lengthscale for latitude and longitude?  Construct an appropriate parametrized kernel, and learn the parameters either via optimization or using MCMC by editing the Stan code (Note: If you go for the stan code, you will need to implement your new kernel).*
+
+*Using an appropriate visualization tool, plot the mean function (try imshow or contourf in matlab or matplotlib (for python), or image or filled.contour for R).
